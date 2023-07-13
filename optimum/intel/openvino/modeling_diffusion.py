@@ -49,7 +49,7 @@ from optimum.utils import (
     DIFFUSION_MODEL_VAE_DECODER_SUBFOLDER,
     DIFFUSION_MODEL_VAE_ENCODER_SUBFOLDER,
 )
-
+from .export import export_models
 from .modeling_base import OVBaseModel
 from .utils import ONNX_WEIGHTS_NAME, OV_TO_NP_TYPE, OV_XML_FILE_NAME
 
@@ -308,7 +308,7 @@ class OVStableDiffusionPipelineBase(OVBaseModel):
         return cls._from_pretrained(
             model_id=save_dir_path,
             config=config,
-            from_onnx=True,
+            from_onnx=False,
             use_auth_token=use_auth_token,
             revision=revision,
             force_download=force_download,
