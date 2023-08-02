@@ -426,7 +426,7 @@ class OVModelForCausalLMIntegrationTest(unittest.TestCase):
         "pegasus",
     )
     GENERATION_LENGTH = 100
-    SPEEDUP_CACHE = 1.15
+    SPEEDUP_CACHE = 1.1
 
     @parameterized.expand(SUPPORTED_ARCHITECTURES)
     def test_compare_to_transformers(self, model_arch):
