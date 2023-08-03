@@ -30,7 +30,7 @@ from nncf.torch.dynamic_graph.io_handling import wrap_nncf_model_inputs_with_obj
 from nncf.torch.initialization import PTInitializingDataLoader
 from openvino._offline_transformations import compress_quantize_weights_transformation
 from openvino.runtime import Core, Tensor
-from torch.utils.data import DataLoader, RandomSampler, TensorDataset
+from torch.utils.data import DataLoader, RandomSampler
 from transformers import DataCollator, PreTrainedModel, default_data_collator
 from transformers.pytorch_utils import Conv1D
 
@@ -38,9 +38,9 @@ from optimum.exporters.onnx import export as onnx_export
 from optimum.exporters.tasks import TasksManager
 from optimum.quantization_base import OptimumQuantizer
 
-from ..utils.constant import _TASK_ALIASES
-from .configuration import INT8_WEIGHT_COMPRESSION_CONFIG, OVConfig
 from ...exporters.openvino import export
+from ..utils.constant import _TASK_ALIASES
+from .configuration import OVConfig
 from .modeling_base import OVBaseModel
 from .modeling_decoder import OVBaseDecoderModel
 from .utils import (
@@ -353,7 +353,7 @@ class OVQuantizer(OptimumQuantizer):
                 "No configuration describing the quantization process was provided, a default OVConfig will be generated."
             )
             quantization_config = OVConfig()
-            
+
         if weights_only:
             compressed_model = compress_weights(self.model)
             self.model = compressed_model

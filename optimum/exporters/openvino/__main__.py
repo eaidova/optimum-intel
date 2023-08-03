@@ -30,10 +30,12 @@ from optimum.utils.save_utils import maybe_save_preprocessors
 from ...intel.openvino.utils import OV_XML_FILE_NAME
 from .convert import export_models
 
+
 logger = logging.getLogger(__name__)
 
 if is_torch_available():
     import torch
+
 
 def main_export(
     model_name_or_path: str,

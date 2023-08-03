@@ -28,9 +28,9 @@ from transformers.file_utils import add_start_docstrings
 from optimum.exporters import TasksManager
 from optimum.modeling_base import OptimizedModel
 
-from ..utils.import_utils import is_transformers_version
 from ...exporters.openvino import export
 from ...exporters.openvino.utils import is_torch_model
+from ..utils.import_utils import is_transformers_version
 from .utils import ONNX_WEIGHTS_NAME, OV_XML_FILE_NAME
 
 
@@ -131,7 +131,9 @@ class OVBaseModel(PreTrainedModel):
             file_name = Path(file_name)
         bin_file_name = file_name.with_suffix(".bin") if file_name.suffix == ".xml" else None
         model = (
-            core.read_model(file_name, bin_file_name) if not file_name.suffix == ".onnx" else convert_model(str(file_name))
+            core.read_model(file_name, bin_file_name)
+            if not file_name.suffix == ".onnx"
+            else convert_model(str(file_name))
         )
         if file_name.suffix == ".onnx":
             model = fix_op_names_duplicates(model)  # should be called during model conversion to IR

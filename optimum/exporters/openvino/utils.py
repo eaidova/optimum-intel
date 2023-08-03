@@ -12,8 +12,10 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from openvino.runtime import PartialShape
 from transformers.utils import is_torch_available
+
+from openvino.runtime import PartialShape
+
 
 if is_torch_available():
     import torch
@@ -24,6 +26,7 @@ def is_torch_model(model):
     if not is_torch_available():
         return False
     return isinstance(model, nn.Module)
+
 
 def flattenize_inputs(inputs):
     flatten_inputs = []

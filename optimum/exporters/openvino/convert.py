@@ -19,18 +19,23 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from openvino.runtime import PartialShape, serialize
-from openvino.tools.ovc import convert_model
-from openvino.runtime.utils.types import get_element_type
 from transformers.utils import is_tf_available, is_torch_available
 
+from openvino.runtime import PartialShape, serialize
+from openvino.runtime.utils.types import get_element_type
+from openvino.tools.ovc import convert_model
 from optimum.exporters.onnx.base import OnnxConfig
 from optimum.exporters.onnx.convert import check_dummy_inputs_are_allowed, export_tensorflow
 from optimum.exporters.onnx.convert import export_pytorch as export_pytorch_to_onnx
 from optimum.utils import is_diffusers_available
 
-from ...intel.openvino.utils import OV_XML_FILE_NAME, ONNX_WEIGHTS_NAME
-from .utils import clear_class_registry, remove_none_from_dummy_inputs, flattenize_inputs, get_input_shapes, is_torch_model
+from ...intel.openvino.utils import ONNX_WEIGHTS_NAME, OV_XML_FILE_NAME
+from .utils import (
+    clear_class_registry,
+    flattenize_inputs,
+    get_input_shapes,
+    remove_none_from_dummy_inputs,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -197,7 +202,11 @@ def export_pytorch(
         except Exception:
             model.config.torchscript = False
             model.config.return_dict = True
-            onnx_output = output.with_suffix(".onnx") if not output.name != OV_XML_FILE_NAME else output.parent / ONNX_WEIGHTS_NAME
+            onnx_output = (
+                output.with_suffix(".onnx")
+                if not output.name != OV_XML_FILE_NAME
+                else output.parent / ONNX_WEIGHTS_NAME
+            )
             input_names, output_names = export_pytorch_to_onnx(
                 model, config, opset, onnx_output, device, input_shapes, model_kwargs
             )
