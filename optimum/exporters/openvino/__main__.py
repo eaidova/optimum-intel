@@ -148,7 +148,6 @@ def main_export(
         else:
             possible_synonyms = ""
         logger.info(f"Automatic task detection to {task}{possible_synonyms}.")
-
     onnx_config, models_and_onnx_configs = optimum_main._get_submodels_and_onnx_configs(
         model=model,
         task=task,

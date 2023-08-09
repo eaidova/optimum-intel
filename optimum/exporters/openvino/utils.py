@@ -46,18 +46,19 @@ def remove_none_from_dummy_inputs(dummy_inputs):
         return type(item)(new_item)
 
     upd_dummy = {}
+    dict_dummy = []
     for k, v in dummy_inputs.items():
         if v is None:
             continue
         if isinstance(v, dict):
-            for kk, vv in v.items():
-                upd_dummy[kk] = vv
+            dict_dummy.append((k, list(v.keys())))
+            upd_dummy[k] = remove_none_from_list_tuple(tuple(v.values()))
             continue
         if isinstance(v, (tuple, list)):
             upd_dummy[k] = remove_none_from_list_tuple(v)
             continue
         upd_dummy[k] = v
-    return upd_dummy
+    return upd_dummy, dict_dummy
 
 
 def get_input_shapes(dummy_inputs, inputs):
