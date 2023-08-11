@@ -152,7 +152,8 @@ def export_pytorch(
     with torch.no_grad():
         model.config.return_dict = True
         model.eval()
-
+        custom_patcher = type(config).patch_model_for_export != OnnxConfig.patch_model_for_export
+        model.config.torchscript = not custom_patcher
         # Check if we need to override certain configuration item
         if config.values_override is not None:
             logger.info(f"Overriding {len(config.values_override)} configuration item(s)")
@@ -183,27 +184,31 @@ def export_pytorch(
         dummy_inputs, dict_inputs = remove_none_from_dummy_inputs(dummy_inputs)
         input_info = get_input_shapes(dummy_inputs, inputs)
         try:
-            patcher = config.patch_model_for_export(model, model_kwargs=model_kwargs)
-            patched_forward = patcher.patched_forward
+            if dict_inputs or custom_patcher:
+                patcher = config.patch_model_for_export(model, model_kwargs=model_kwargs)
+                patched_forward = patcher.patched_forward
 
-            @functools.wraps(patched_forward)
-            def ts_patched_forward(*args, **kwargs):
-                for i in range(len(dict_inputs)):
-                    input_name = dict_inputs[i][0]
-                    keys = dict_inputs[i][1]
-                    tuple_input = kwargs[input_name]
-                    input_dict = dict(zip(keys, tuple_input))
-                    kwargs[input_name] = input_dict
-                outputs = patched_forward(*args, **kwargs)
-                return tuple(outputs.values())
+                @functools.wraps(patched_forward)
+                def ts_patched_forward(*args, **kwargs):
+                    for i in range(len(dict_inputs)):
+                        input_name = dict_inputs[i][0]
+                        keys = dict_inputs[i][1]
+                        tuple_input = kwargs[input_name]
+                        input_dict = dict(zip(keys, tuple_input))
+                        kwargs[input_name] = input_dict
+                    outputs = patched_forward(*args, **kwargs)
+                    return tuple(outputs.values())
 
-            patcher.patched_forward = ts_patched_forward
-            with patcher:
+                patcher.patched_forward = ts_patched_forward
+                with patcher:
+                    ov_model = convert_model(model, example_input=dummy_inputs, input=input_info)
+            else:
+                model.config.torchscript = True
                 ov_model = convert_model(model, example_input=dummy_inputs, input=input_info)
         except Exception:
             orig_torch_onnx_export = torch.onnx.export
 
-            torch.onnx.export = functools.partial(orig_torch_onnx_export, do_constant_folding=True)
+            torch.onnx.export = functools.partial(orig_torch_onnx_export, do_constant_folding=False)
             model.config.torchscript = False
             model.config.return_dict = True
             onnx_output = (
@@ -219,7 +224,7 @@ def export_pytorch(
             save_model(
                 ov_model,
                 output.parent / OV_XML_FILE_NAME if output.suffix != ".xml" else output,
-                compress_to_fp16=False,
+                compress_to_fp16=True,
             )
             return input_names, output_names, True
         clear_class_registry()
@@ -244,7 +249,7 @@ def export_pytorch(
             inp_tensor.get_node().set_element_type(get_element_type(inp_data.cpu().numpy().dtype))
         ov_model.validate_nodes_and_infer_types()
         save_model(
-            ov_model, output.parent / OV_XML_FILE_NAME if output.suffix != ".xml" else output, compress_to_fp16=False
+            ov_model, output.parent / OV_XML_FILE_NAME if output.suffix != ".xml" else output, compress_to_fp16=True
         )
         del model
         gc.collect()

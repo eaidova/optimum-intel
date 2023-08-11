@@ -150,7 +150,7 @@ class OVBaseModel(PreTrainedModel):
                 The directory where to save the model files.
         """
         dst_path = os.path.join(save_directory, OV_XML_FILE_NAME)
-        openvino.save_model(self.model, dst_path, compress_to_fp16=False)
+        openvino.save_model(self.model, dst_path, compress_to_fp16=True)
 
     @classmethod
     def _from_pretrained(
