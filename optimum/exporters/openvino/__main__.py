@@ -19,6 +19,7 @@ from typing import Any, Callable, Dict, Optional, Union
 
 from requests.exceptions import ConnectionError as RequestsConnectionError
 from transformers import AutoConfig, AutoTokenizer
+from transformers.utils import is_torch_available
 
 from optimum.exporters import TasksManager
 from optimum.exporters.onnx import __main__ as optimum_main
@@ -28,6 +29,14 @@ from optimum.utils.save_utils import maybe_load_preprocessors, maybe_save_prepro
 
 from ...intel.utils.import_utils import is_nncf_available
 from .convert import export_models
+
+
+def get_dtype(device):
+    if not is_torch_available() or device != "cpu":
+        return None
+    import torch
+    return torch.float32
+
 
 
 OV_XML_FILE_NAME = "openvino_model.xml"
@@ -204,6 +213,7 @@ def main_export(
         trust_remote_code=trust_remote_code,
         framework=framework,
         device=device,
+        torch_dtype=get_dtype(device)
     )
 
     custom_architecture = False
