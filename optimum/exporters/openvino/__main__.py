@@ -201,6 +201,7 @@ def main_export(
                 f"The task could not be automatically inferred as this is available only for models hosted on the Hugging Face Hub. Please provide the argument --task with the relevant task from {', '.join(TasksManager.get_all_tasks())}. Detailed error: {e}"
             )
 
+    dtype = get_dtype(device)
     model = TasksManager.get_model_from_task(
         task,
         model_name_or_path,
@@ -213,8 +214,10 @@ def main_export(
         trust_remote_code=trust_remote_code,
         framework=framework,
         device=device,
-        torch_dtype=get_dtype(device)
+        torch_dtype=dtype
     )
+    if dtype is not None:
+        model.to(dtype)
 
     custom_architecture = False
     is_stable_diffusion = "stable-diffusion" in task
