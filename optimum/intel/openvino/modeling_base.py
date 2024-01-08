@@ -88,6 +88,7 @@ class OVBaseModel(OptimizedModel):
         self.output_names = output_names
 
         self.model = model
+        self.compiled_model = None
         self.request = None
         if enable_compilation:
             self.compile()
@@ -341,7 +342,7 @@ class OVBaseModel(OptimizedModel):
         )
 
     def compile(self):
-        if self.request is None:
+        if self.compiled_model is None:
             logger.info(f"Compiling the model to {self._device} ...")
             ov_config = {**self.ov_config}
             if "CACHE_DIR" not in self.ov_config.keys() and not str(self.model_save_dir).startswith(gettempdir()):
@@ -349,7 +350,7 @@ class OVBaseModel(OptimizedModel):
                 cache_dir = Path(self.model_save_dir).joinpath("model_cache")
                 ov_config["CACHE_DIR"] = str(cache_dir)
                 logger.info(f"Setting OpenVINO CACHE_DIR to {str(cache_dir)}")
-            self.request = core.compile_model(self.model, self._device, ov_config)
+            self.compiled_model = core.compile_model(self.model, self._device, ov_config)
 
     def _reshape(
         self,
@@ -388,6 +389,7 @@ class OVBaseModel(OptimizedModel):
         self.is_dynamic = True if batch_size == -1 and sequence_length == -1 else False
         self.model = self._reshape(self.model, batch_size, sequence_length, height, width)
         self.request = None
+        self.compiled_model = None
         return self
 
     def half(self):

@@ -36,6 +36,7 @@ from ..utils.modeling_utils import MULTI_QUERY_ATTN_MODELS
 from .modeling import _TOKENIZER_FOR_DOC, INPUTS_DOCSTRING, MODEL_START_DOCSTRING, OVModel
 from .utils import ONNX_WEIGHTS_NAME, OV_XML_FILE_NAME, STR_TO_OV_TYPE
 
+import datetime
 
 if is_transformers_version("<", "4.25.0"):
     from transformers.generation_utils import GenerationMixin
@@ -307,9 +308,9 @@ class OVBaseDecoderModel(OVModel):
         return self
 
     def compile(self):
-        if self.request is None:
+        if self.compiled_model is None:
             super().compile()
-            self.request = self.request.create_infer_request()
+            self.request = self.compiled_model.create_infer_request()
 
     def _make_stateful(self):
         patch_stateful(self.config, self.model)
@@ -335,15 +336,28 @@ class OVModelForCausalLM(OVBaseDecoderModel, GenerationMixin):
             checkpoint="gpt2",
         )
     )
+
+    def create_infer_request(self):
+        if self.compiled_model is None:
+            super().compile()        
+        return self.compiled_model.create_infer_request()
+
     def forward(
         self,
         input_ids: torch.LongTensor,
         attention_mask: Optional[torch.LongTensor] = None,
         past_key_values: Optional[Tuple[Tuple[torch.FloatTensor]]] = None,
         position_ids: Optional[torch.LongTensor] = None,
+        infer_request: Optional[any] = None,
         **kwargs,
     ) -> CausalLMOutputWithPast:
         self.compile()
+        start_time = datetime.datetime.now()
+        print("start forward:",start_time.strftime("%H:%M:%S %f"))
+        if infer_request is None:
+            request = self.request
+        else:
+            request = infer_request
 
         if self.use_cache and past_key_values is not None:
             input_ids = input_ids[:, -1:]
@@ -399,10 +413,10 @@ class OVModelForCausalLM(OVBaseDecoderModel, GenerationMixin):
                 # It should be something that is not None and it should be True when converted to Boolean.
                 past_key_values = ((),)
                 # This is the first iteration in a sequence, reset all states
-                if hasattr(self.request, "reset_state"):
-                    self.request.reset_state()
+                if hasattr(request, "reset_state"):
+                    request.reset_state()
                 else:
-                    for state in self.request.query_state():
+                    for state in request.query_state():
                         state.reset()
                 # Set initial value for the next beam_idx input that will be used at the current iteration
                 # and will be optionally updated by _reorder_cache at the next iterations if beam_search is used
@@ -436,14 +450,14 @@ class OVModelForCausalLM(OVBaseDecoderModel, GenerationMixin):
             inputs["beam_idx"] = self.next_beam_idx
 
         # Run inference
-        self.request.start_async(inputs, share_inputs=True)
-        self.request.wait()
-        logits = torch.from_numpy(self.request.get_tensor("logits").data).to(self.device)
+        request.start_async(inputs, share_inputs=True)
+        request.wait()
+        logits = torch.from_numpy(request.get_tensor("logits").data).to(self.device)
 
         if not self.stateful:
             if self.use_cache:
                 # Tuple of length equal to : number of layer * number of past_key_value per decoder layer (2 corresponds to the self-attention layer)
-                past_key_values = tuple(self.request.get_tensor(key).data for key in self.key_value_output_names)
+                past_key_values = tuple(request.get_tensor(key).data for key in self.key_value_output_names)
                 if self.config.model_type not in MULTI_QUERY_ATTN_MODELS:
                     # Tuple of tuple of length `n_layers`, with each tuple of length equal to 2 (k/v of self-attention)
                     past_key_values = tuple(
@@ -451,7 +465,9 @@ class OVModelForCausalLM(OVBaseDecoderModel, GenerationMixin):
                     )
             else:
                 past_key_values = None
-
+        end_time = datetime.datetime.now()
+        print("finish forward",end_time.strftime("%H:%M:%S %f"))
+        print("Duration ms:", (end_time - start_time).total_seconds() * 1000)
         return CausalLMOutputWithPast(logits=logits, past_key_values=past_key_values)
 
     # Adapted from transformers.models.gpt2.modeling_gpt2.GPT2LMHeadModel.prepare_inputs_for_generation
@@ -459,6 +475,7 @@ class OVModelForCausalLM(OVBaseDecoderModel, GenerationMixin):
         # if model is used as a decoder in encoder-decoder model, the decoder attention mask is created on the fly
         attention_mask = kwargs.get("attention_mask", None)
         use_cache = kwargs.get("use_cache", None)
+        infer_request = kwargs.get("infer_request", None)
 
         position_ids = kwargs.get("position_ids", None)
         if attention_mask is not None and position_ids is None:
@@ -474,6 +491,7 @@ class OVModelForCausalLM(OVBaseDecoderModel, GenerationMixin):
             "use_cache": use_cache,
             "position_ids": position_ids,
             "attention_mask": attention_mask,
+            "infer_request": infer_request,
         }
 
     # Adapted from transformers.models.gpt2.modeling_gpt2.GPT2LMHeadModel._reorder_cache
@@ -552,6 +570,7 @@ class OVBloomForCausalLM(OVModelForCausalLM):
     def prepare_inputs_for_generation(self, input_ids, past_key_values=None, **kwargs):
         attention_mask = kwargs.get("attention_mask", None)
         use_cache = kwargs.get("use_cache", None)
+        infer_request = kwargs.get("infer_request", None)
 
         # only last token for input_ids if past is not None
         if past_key_values and not self.stateful:
@@ -565,6 +584,7 @@ class OVBloomForCausalLM(OVModelForCausalLM):
             "use_cache": use_cache,
             "position_ids": None,
             "attention_mask": attention_mask,
+            "infer_request" : infer_request,
         }
 
     # Adapted from transformers.models.bloom.modeling_bloom.BloomForCausalLM._reorder_cache
@@ -637,6 +657,7 @@ class OVOPTForCausalLM(OVModelForCausalLM):
     def prepare_inputs_for_generation(self, input_ids, past_key_values=None, **kwargs):
         attention_mask = kwargs.get("attention_mask", None)
         use_cache = kwargs.get("use_cache", None)
+        infer_request = kwargs.get("infer_request", None)
 
         return {
             "input_ids": input_ids,
@@ -644,6 +665,7 @@ class OVOPTForCausalLM(OVModelForCausalLM):
             "use_cache": use_cache,
             "position_ids": None,
             "attention_mask": attention_mask,
+            "infer_request": infer_request,
         }
 
 
@@ -652,6 +674,7 @@ class OVMPTForCausalLM(OVModelForCausalLM):
     def prepare_inputs_for_generation(self, input_ids, past_key_values=None, **kwargs):
         attention_mask = kwargs.get("attention_mask", None)
         use_cache = kwargs.get("use_cache", None)
+        infer_request = kwargs.get("infer_request", None)
 
         return {
             "input_ids": input_ids,
@@ -659,6 +682,7 @@ class OVMPTForCausalLM(OVModelForCausalLM):
             "use_cache": use_cache,
             "position_ids": None,
             "attention_mask": attention_mask,
+            "infer_request": infer_request,
         }
 
 
