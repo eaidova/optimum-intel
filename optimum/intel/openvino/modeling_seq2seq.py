@@ -440,7 +440,7 @@ class OVEncoder:
         self.input_names = {key.get_any_name(): idx for idx, key in enumerate(self.model.inputs)}
         self.main_input_name = main_input_name
         self.ov_config = ov_config
-        self.request = None
+        self.compiled_model = None
 
     @add_start_docstrings_to_model_forward(ENCODER_INPUTS_DOCSTRING)
     def forward(
@@ -459,9 +459,10 @@ class OVEncoder:
             inputs["attention_mask"] = attention_mask
 
         # Run inference
-        last_hidden_state = torch.from_numpy(
-            self.request(inputs, share_inputs=True, share_outputs=True)["last_hidden_state"]
-        ).to(self.device)
+        infer_request = self.compiled_model.create_infer_request()
+        infer_request.start_async(inputs, share_inputs=True)
+        infer_request.wait()
+        last_hidden_state = torch.from_numpy(infer_request.get_tensor("last_hidden_state").data).to(self.device)
 
         return BaseModelOutput(last_hidden_state=last_hidden_state)
 
@@ -469,9 +470,9 @@ class OVEncoder:
         return self.forward(*args, **kwargs)
 
     def _compile(self):
-        if self.request is None:
+        if self.compiled_model is None:
             logger.info(f"Compiling the encoder to {self._device} ...")
-            self.request = core.compile_model(self.model, self._device, self.ov_config)
+            self.compiled_model = core.compile_model(self.model, self._device, self.ov_config)
 
 
 class OVDecoder:
@@ -503,7 +504,7 @@ class OVDecoder:
             self.num_pkv = 4
 
         self.ov_config = ov_config
-        self.request = None
+        self.compiled_model = None
 
     @add_start_docstrings_to_model_forward(DECODER_INPUTS_DOCSTRING)
     def forward(
@@ -540,13 +541,14 @@ class OVDecoder:
         if "decoder_attention_mask" in self.input_names and decoder_attention_mask is not None:
             inputs["decoder_attention_mask"] = decoder_attention_mask
         # Run inference
-        self.request.start_async(inputs, share_inputs=True)
-        self.request.wait()
-        logits = torch.from_numpy(self.request.get_tensor("logits").data).to(self.device)
+        infer_request = self.compiled_model.create_infer_request()
+        infer_request.start_async(inputs, share_inputs=True)
+        infer_request.wait()
+        logits = torch.from_numpy(infer_request.get_tensor("logits").data).to(self.device)
 
         # Tuple of length equal to : number of layer * number of past_key_value per decoder layer (2 corresponds to the
         # self-attention layer and 2 to the cross-attention layer)
-        out_past_key_values = tuple(self.request.get_tensor(key).data for key in self.key_value_output_names)
+        out_past_key_values = tuple(infer_request.get_tensor(key).data for key in self.key_value_output_names)
 
         # Tuple of tuple of length `n_layers`, with each tuple of length equal to:
         # * 4 for the decoder without cache (k/v of self-attention + k/v of cross-attention)
@@ -568,9 +570,9 @@ class OVDecoder:
         return self.forward(*args, **kwargs)
 
     def _compile(self):
-        if self.request is None:
+        if self.compiled_model is None:
             logger.info(f"Compiling the decoder to {self._device} ...")
-            self.request = core.compile_model(self.model, self._device, self.ov_config).create_infer_request()
+            self.compiled_model = core.compile_model(self.model, self._device, self.ov_config)
 
 
 @add_start_docstrings(

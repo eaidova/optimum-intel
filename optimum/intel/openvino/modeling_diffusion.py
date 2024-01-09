@@ -481,7 +481,7 @@ class OVStableDiffusionPipelineBase(OVBaseModel, OVTextualInversionLoaderMixin):
 
     def half(self):
         """
-        Converts all the model weights to FP16 for more efficient inference on GPU.
+        Converts all the model weights to FP16 for more efficient inference on cd dtr   .
         """
         compress_model_transformation(self.vae_decoder.model)
         compress_model_transformation(self.unet.model)
@@ -532,7 +532,8 @@ class OVModelPart:
             for inputs in self.model.inputs
         }
         self.ov_config = ov_config or {**self.parent_model.ov_config}
-        self.request = None
+        self.compiled_model = None
+        print("COMPILED_MODEL", self.compiled_model)
         self._model_name = model_name
         self._model_dir = Path(model_dir or parent_model._model_save_dir)
         config_path = self._model_dir / model_name / self.CONFIG_NAME
@@ -541,9 +542,9 @@ class OVModelPart:
             self.ov_config["CACHE_DIR"] = os.path.join(self._model_dir, self._model_name, "model_cache")
 
     def _compile(self):
-        if self.request is None:
+        if self.compiled_model is None:
             logger.info(f"Compiling the {self._model_name} to {self.device} ...")
-            self.request = core.compile_model(self.model, self.device, self.ov_config)
+            self.compiled_model = core.compile_model(self.model, self.device, self.ov_config)
 
     @property
     def device(self):
@@ -566,7 +567,7 @@ class OVModelTextEncoder(OVModelPart):
         inputs = {
             "input_ids": input_ids,
         }
-        outputs = self.request(inputs, shared_memory=True)
+        outputs = self.compiled_model(inputs, share_inputs=True)
         return list(outputs.values())
 
 
@@ -600,8 +601,13 @@ class OVModelUnet(OVModelPart):
         if timestep_cond is not None:
             inputs["timestep_cond"] = timestep_cond
 
-        outputs = self.request(inputs, shared_memory=True)
+        outputs = self.compiled_model(inputs, share_inputs=True)
         return list(outputs.values())
+    
+    def _compile(self):
+        if "GPU" in self.device:
+            self.ov_config.update({"INFERENCE_PRECISION_HINT": "f32"})
+        super()._compile()    
 
 
 class OVModelVaeDecoder(OVModelPart):
@@ -616,8 +622,10 @@ class OVModelVaeDecoder(OVModelPart):
         inputs = {
             "latent_sample": latent_sample,
         }
-        outputs = self.request(inputs, shared_memory=True)
+        outputs = self.compiled_model(inputs, share_inputs=True)
         return list(outputs.values())
+        
+        return outputs
 
     def _compile(self):
         if "GPU" in self.device:
@@ -637,7 +645,7 @@ class OVModelVaeEncoder(OVModelPart):
         inputs = {
             "sample": sample,
         }
-        outputs = self.request(inputs, shared_memory=True)
+        outputs = self.compiled_model(inputs, share_inputs=True)
         return list(outputs.values())
 
     def _compile(self):

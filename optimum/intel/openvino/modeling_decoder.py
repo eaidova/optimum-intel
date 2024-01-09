@@ -344,6 +344,11 @@ class OVModelForCausalLM(OVBaseDecoderModel, GenerationMixin):
             kwargs["infer_request"] = self.create_infer_request()
         return super().generate(*args, **kwargs)
 
+    def __call__(self, *args, **kwargs):
+        if kwargs.get("infer_request") is None:
+            kwargs["infer_request"] = self.create_infer_request()
+        return super().__call__(*args, **kwargs)
+    
     def forward(
         self,
         input_ids: torch.LongTensor,

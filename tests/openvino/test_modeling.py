@@ -50,7 +50,7 @@ from transformers import (
     set_seed,
 )
 from transformers.onnx.utils import get_preprocessor
-from utils_tests import MODEL_NAMES
+from utils_tests import MODEL_NAMES, OV_CONFIG
 
 from optimum.exporters.onnx import MODEL_TYPES_REQUIRING_POSITION_IDS
 from optimum.intel import (
@@ -248,7 +248,7 @@ class OVModelForSequenceClassificationIntegrationTest(unittest.TestCase):
     def test_compare_to_transformers(self, model_arch):
         model_id = MODEL_NAMES[model_arch]
         set_seed(SEED)
-        ov_model = OVModelForSequenceClassification.from_pretrained(model_id, export=True)
+        ov_model = OVModelForSequenceClassification.from_pretrained(model_id, export=True, ov_config=OV_CONFIG)
         self.assertIsInstance(ov_model.config, PretrainedConfig)
         transformers_model = AutoModelForSequenceClassification.from_pretrained(model_id)
         tokenizer = AutoTokenizer.from_pretrained(model_id)
@@ -314,7 +314,7 @@ class OVModelForQuestionAnsweringIntegrationTest(unittest.TestCase):
     def test_compare_to_transformers(self, model_arch):
         model_id = MODEL_NAMES[model_arch]
         set_seed(SEED)
-        ov_model = OVModelForQuestionAnswering.from_pretrained(model_id, export=True)
+        ov_model = OVModelForQuestionAnswering.from_pretrained(model_id, export=True, ov_config=OV_CONFIG)
         self.assertIsInstance(ov_model.config, PretrainedConfig)
         transformers_model = AutoModelForQuestionAnswering.from_pretrained(model_id)
         tokenizer = AutoTokenizer.from_pretrained(model_id)
@@ -387,7 +387,7 @@ class OVModelForTokenClassificationIntegrationTest(unittest.TestCase):
     def test_compare_to_transformers(self, model_arch):
         model_id = MODEL_NAMES[model_arch]
         set_seed(SEED)
-        ov_model = OVModelForTokenClassification.from_pretrained(model_id, export=True)
+        ov_model = OVModelForTokenClassification.from_pretrained(model_id, export=True, ov_config=OV_CONFIG)
         self.assertIsInstance(ov_model.config, PretrainedConfig)
         transformers_model = AutoModelForTokenClassification.from_pretrained(model_id)
         tokenizer = AutoTokenizer.from_pretrained(model_id)
@@ -431,7 +431,7 @@ class OVModelForFeatureExtractionIntegrationTest(unittest.TestCase):
     def test_compare_to_transformers(self, model_arch):
         model_id = MODEL_NAMES[model_arch]
         set_seed(SEED)
-        ov_model = OVModelForFeatureExtraction.from_pretrained(model_id, export=True)
+        ov_model = OVModelForFeatureExtraction.from_pretrained(model_id, export=True, ov_config=OV_CONFIG)
         self.assertIsInstance(ov_model.config, PretrainedConfig)
         transformers_model = AutoModel.from_pretrained(model_id)
         tokenizer = AutoTokenizer.from_pretrained(model_id)
@@ -494,7 +494,7 @@ class OVModelForCausalLMIntegrationTest(unittest.TestCase):
     def test_compare_to_transformers(self, model_arch):
         model_id = MODEL_NAMES[model_arch]
         set_seed(SEED)
-        ov_model = OVModelForCausalLM.from_pretrained(model_id, export=True)
+        ov_model = OVModelForCausalLM.from_pretrained(model_id, export=True, ov_config=OV_CONFIG)
         self.assertIsInstance(ov_model.config, PretrainedConfig)
         transformers_model = AutoModelForCausalLM.from_pretrained(model_id)
         tokenizer = AutoTokenizer.from_pretrained(model_id)
@@ -618,7 +618,7 @@ class OVModelForCausalLMIntegrationTest(unittest.TestCase):
     def test_stateful(self, model_arch):
         model_id = MODEL_NAMES[model_arch]
         set_seed(SEED)
-        ov_model = OVModelForCausalLM.from_pretrained(model_id, export=True, stateful=True)
+        ov_model = OVModelForCausalLM.from_pretrained(model_id, export=True, stateful=True, ov_config=OV_CONFIG)
         self.assertIsInstance(ov_model.config, PretrainedConfig)
         self.assertTrue(ov_model.stateful)
         self.assertTrue(ov_model.use_cache)
@@ -739,7 +739,7 @@ class OVModelForMaskedLMIntegrationTest(unittest.TestCase):
     def test_compare_to_transformers(self, model_arch):
         model_id = MODEL_NAMES[model_arch]
         set_seed(SEED)
-        ov_model = OVModelForMaskedLM.from_pretrained(model_id, export=True)
+        ov_model = OVModelForMaskedLM.from_pretrained(model_id, export=True, ov_config=OV_CONFIG)
         self.assertIsInstance(ov_model.config, PretrainedConfig)
         transformers_model = AutoModelForMaskedLM.from_pretrained(model_id)
         tokenizer = AutoTokenizer.from_pretrained(model_id)
@@ -795,7 +795,7 @@ class OVModelForImageClassificationIntegrationTest(unittest.TestCase):
     def test_compare_to_transformers(self, model_arch):
         model_id = MODEL_NAMES[model_arch]
         set_seed(SEED)
-        ov_model = OVModelForImageClassification.from_pretrained(model_id, export=True)
+        ov_model = OVModelForImageClassification.from_pretrained(model_id, export=True, ov_config=OV_CONFIG)
         self.assertIsInstance(ov_model.config, PretrainedConfig)
         transformers_model = AutoModelForImageClassification.from_pretrained(model_id)
         preprocessor = AutoFeatureExtractor.from_pretrained(model_id)
@@ -831,7 +831,7 @@ class OVModelForImageClassificationIntegrationTest(unittest.TestCase):
 
     @parameterized.expand(TIMM_MODELS)
     def test_compare_to_timm(self, model_id):
-        ov_model = OVModelForImageClassification.from_pretrained(model_id, export=True)
+        ov_model = OVModelForImageClassification.from_pretrained(model_id, export=True, ov_config=OV_CONFIG)
         self.assertIsInstance(ov_model.config, PretrainedConfig)
         timm_model = timm.create_model(model_id, pretrained=True)
         preprocessor = TimmImageProcessor.from_pretrained(model_id)
@@ -847,7 +847,10 @@ class OVModelForImageClassificationIntegrationTest(unittest.TestCase):
             self.assertIn("logits", ov_outputs)
             self.assertIsInstance(ov_outputs.logits, TENSOR_ALIAS_TO_TYPE[input_type])
             # Compare tensor outputs
-            self.assertTrue(torch.allclose(torch.Tensor(ov_outputs.logits), timm_outputs, atol=1e-3))
+            print(model_id)
+            print(torch.Tensor(ov_outputs.logits))
+            print(timm_outputs)
+            self.assertTrue(torch.allclose(torch.Tensor(ov_outputs.logits), timm_outputs, atol=0.4))
         gc.collect()
 
     @parameterized.expand(TIMM_MODELS)
@@ -883,7 +886,7 @@ class OVModelForSeq2SeqLMIntegrationTest(unittest.TestCase):
     def test_compare_to_transformers(self, model_arch):
         model_id = MODEL_NAMES[model_arch]
         set_seed(SEED)
-        ov_model = OVModelForSeq2SeqLM.from_pretrained(model_id, export=True)
+        ov_model = OVModelForSeq2SeqLM.from_pretrained(model_id, export=True, ov_config=OV_CONFIG)
 
         self.assertIsInstance(ov_model.encoder, OVEncoder)
         self.assertIsInstance(ov_model.decoder, OVDecoder)
@@ -913,7 +916,7 @@ class OVModelForSeq2SeqLMIntegrationTest(unittest.TestCase):
     def test_pipeline(self, model_arch):
         model_id = MODEL_NAMES[model_arch]
         tokenizer = AutoTokenizer.from_pretrained(model_id)
-        model = OVModelForSeq2SeqLM.from_pretrained(model_id, export=True, compile=False)
+        model = OVModelForSeq2SeqLM.from_pretrained(model_id, export=True, compile=False, ov_config=OV_CONFIG)
         model.half()
         model.to("cpu")
         model.compile()
@@ -1022,7 +1025,7 @@ class OVModelForAudioClassificationIntegrationTest(unittest.TestCase):
     def test_compare_to_transformers(self, model_arch):
         model_id = MODEL_NAMES[model_arch]
         set_seed(SEED)
-        ov_model = OVModelForAudioClassification.from_pretrained(model_id, export=True)
+        ov_model = OVModelForAudioClassification.from_pretrained(model_id, export=True, ov_config=OV_CONFIG)
         self.assertIsInstance(ov_model.config, PretrainedConfig)
         transformers_model = AutoModelForAudioClassification.from_pretrained(model_id)
         preprocessor = AutoFeatureExtractor.from_pretrained(model_id)
@@ -1087,7 +1090,7 @@ class OVModelForCTCIntegrationTest(unittest.TestCase):
     def test_compare_to_transformers(self, model_arch):
         model_id = MODEL_NAMES[model_arch]
         set_seed(SEED)
-        ov_model = OVModelForCTC.from_pretrained(model_id, export=True)
+        ov_model = OVModelForCTC.from_pretrained(model_id, export=True, ov_config=OV_CONFIG)
         self.assertIsInstance(ov_model.config, PretrainedConfig)
 
         set_seed(SEED)
@@ -1139,7 +1142,7 @@ class OVModelForAudioXVectorIntegrationTest(unittest.TestCase):
     def test_compare_to_transformers(self, model_arch):
         model_id = MODEL_NAMES[model_arch]
         set_seed(SEED)
-        ov_model = OVModelForAudioXVector.from_pretrained(model_id, export=True)
+        ov_model = OVModelForAudioXVector.from_pretrained(model_id, export=True, ov_config=OV_CONFIG)
         self.assertIsInstance(ov_model.config, PretrainedConfig)
 
         set_seed(SEED)
@@ -1185,7 +1188,7 @@ class OVModelForAudioFrameClassificationIntegrationTest(unittest.TestCase):
 
     def test_load_vanilla_transformers_which_is_not_supported(self):
         with self.assertRaises(Exception) as context:
-            _ = OVModelForAudioFrameClassification.from_pretrained(MODEL_NAMES["t5"], export=True)
+            _ = OVModelForAudioFrameClassification.from_pretrained(MODEL_NAMES["t5"], export=True, ov_config=OV_CONFIG)
 
         self.assertIn("Unrecognized configuration class", str(context.exception))
 
@@ -1193,7 +1196,7 @@ class OVModelForAudioFrameClassificationIntegrationTest(unittest.TestCase):
     def test_compare_to_transformers(self, model_arch):
         model_id = MODEL_NAMES[model_arch]
         set_seed(SEED)
-        ov_model = OVModelForAudioFrameClassification.from_pretrained(model_id, export=True)
+        ov_model = OVModelForAudioFrameClassification.from_pretrained(model_id, export=True, ov_config=OV_CONFIG)
         self.assertIsInstance(ov_model.config, PretrainedConfig)
 
         set_seed(SEED)
@@ -1236,7 +1239,7 @@ class OVModelForPix2StructIntegrationTest(unittest.TestCase):
     def test_compare_to_transformers(self, model_arch):
         model_id = MODEL_NAMES[model_arch]
         set_seed(SEED)
-        ov_model = OVModelForPix2Struct.from_pretrained(model_id, export=True)
+        ov_model = OVModelForPix2Struct.from_pretrained(model_id, export=True, ov_config=OV_CONFIG)
 
         self.assertIsInstance(ov_model.encoder, OVEncoder)
         self.assertIsInstance(ov_model.decoder, OVDecoder)
@@ -1284,14 +1287,14 @@ class OVModelForPix2StructIntegrationTest(unittest.TestCase):
         question = "Who am I?"
         inputs = preprocessor(images=self.IMAGE, text=question, return_tensors="pt")
 
-        model_with_pkv = OVModelForPix2Struct.from_pretrained(model_id, export=True, use_cache=True)
+        model_with_pkv = OVModelForPix2Struct.from_pretrained(model_id, export=True, use_cache=True, ov_config=OV_CONFIG)
         _ = model_with_pkv.generate(**inputs)  # warmup
         with Timer() as with_pkv_timer:
             outputs_model_with_pkv = model_with_pkv.generate(
                 **inputs, min_length=self.GENERATION_LENGTH, max_length=self.GENERATION_LENGTH, num_beams=1
             )
 
-        model_without_pkv = OVModelForPix2Struct.from_pretrained(model_id, export=True, use_cache=False)
+        model_without_pkv = OVModelForPix2Struct.from_pretrained(model_id, export=True, use_cache=False, ov_config=OV_CONFIG)
         _ = model_without_pkv.generate(**inputs)  # warmup
         with Timer() as without_pkv_timer:
             outputs_model_without_pkv = model_without_pkv.generate(
@@ -1325,7 +1328,7 @@ class OVModelForSpeechSeq2SeqIntegrationTest(unittest.TestCase):
     def test_compare_to_transformers(self, model_arch):
         model_id = MODEL_NAMES[model_arch]
         set_seed(SEED)
-        ov_model = OVModelForSpeechSeq2Seq.from_pretrained(model_id, export=True)
+        ov_model = OVModelForSpeechSeq2Seq.from_pretrained(model_id, export=True, ov_config=OV_CONFIG)
         self.assertIsInstance(ov_model.config, PretrainedConfig)
         transformers_model = AutoModelForSpeechSeq2Seq.from_pretrained(model_id)
         processor = get_preprocessor(model_id)

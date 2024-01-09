@@ -91,6 +91,7 @@ MODEL_NAMES = {
     "xlm_roberta": "hf-internal-testing/tiny-xlm-roberta",
 }
 
+OV_CONFIG = {"INFERENCE_PRECISION_HINT": "f32", "NUM_STREAMS": 1}
 
 TENSOR_ALIAS_TO_TYPE = {
     "pt": torch.Tensor,
