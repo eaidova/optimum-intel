@@ -29,7 +29,7 @@ from transformers.modeling_outputs import CausalLMOutputWithPast
 
 from optimum.utils import NormalizedConfigManager
 
-from ...exporters.openvino import main_export, patch_stateful, raise_if_openvino_is_too_old
+from ...exporters.openvino import ensure_stateful_is_available, main_export, patch_stateful
 from ...exporters.openvino.stateful import model_has_state
 from ..utils.import_utils import is_transformers_version
 from ..utils.modeling_utils import MULTI_QUERY_ATTN_MODELS
@@ -136,12 +136,13 @@ class OVBaseDecoderModel(OVModel):
         self.key_value_output_names = [key for key in self.output_names if "present" in key]
         self._original_model = self.model.clone()  # keep original model for serialization
         self._pkv_precision = Type.f32
+        self.next_beam_idx = None
         self.update_pkv_precision()
         if self.is_dynamic:
             self.model = self._reshape(self.model, -1, -1)
 
         if self.stateful or stateful:
-            raise_if_openvino_is_too_old()
+            ensure_stateful_is_available()
 
         def raise_error(model_prop, user_prop, name):
             raise ValueError(
@@ -414,14 +415,11 @@ class OVModelForCausalLM(OVBaseDecoderModel, GenerationMixin):
                 # It should be something that is not None and it should be True when converted to Boolean.
                 past_key_values = ((),)
                 # This is the first iteration in a sequence, reset all states
-                if hasattr(infer_request, "reset_state"):
-                    infer_request.reset_state()
-                else:
-                    for state in infer_request.query_state():
-                        state.reset()
+                infer_request.reset_state()
+
                 # Set initial value for the next beam_idx input that will be used at the current iteration
                 # and will be optionally updated by _reorder_cache at the next iterations if beam_search is used
-                self.next_beam_idx = np.array(range(batch_size), dtype=int)
+                self.next_beam_idx = np.arange(batch_size, dtype=int)
 
         inputs["input_ids"] = np.array(input_ids)
         # Add the attention_mask inputs when needed
@@ -447,8 +445,10 @@ class OVModelForCausalLM(OVBaseDecoderModel, GenerationMixin):
 
             inputs["position_ids"] = position_ids
 
-        if hasattr(self, "next_beam_idx"):
-            inputs["beam_idx"] = self.next_beam_idx
+        if "beam_idx" in self.input_names:
+            inputs["beam_idx"] = (
+                self.next_beam_idx if self.next_beam_idx is not None else np.arange(batch_size, dtype=int)
+            )
 
         # Run inference
         infer_request.start_async(inputs, share_inputs=True)

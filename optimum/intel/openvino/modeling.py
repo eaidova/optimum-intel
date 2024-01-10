@@ -270,10 +270,10 @@ class OVModelForQuestionAnswering(OVModel):
         infer_request.start_async(inputs)
         infer_request.wait()
         start_logits = (
-            torch.from_numpy(infer_request.get_tensor("start_logits").data).to(self.device) if not np_inputs else infer_request.get_tensor("start_logits")
+            torch.from_numpy(infer_request.get_tensor("start_logits").data).to(self.device) if not np_inputs else infer_request.get_tensor("start_logits").data
         )
         end_logits = (
-            torch.from_numpy(infer_request.get_tensor("end_logits").data).to(self.device) if not np_inputs else infer_request.output_tensors("end_logits")
+            torch.from_numpy(infer_request.get_tensor("end_logits").data).to(self.device) if not np_inputs else infer_request.get_tensor("end_logits").data
         )
         return QuestionAnsweringModelOutput(start_logits=start_logits, end_logits=end_logits)
 

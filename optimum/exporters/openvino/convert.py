@@ -32,8 +32,8 @@ from optimum.exporters.onnx.model_patcher import DecoderModelPatcher
 from optimum.utils import is_diffusers_available
 
 from ...intel.utils.import_utils import is_nncf_available, is_optimum_version
-from .better_transformer_patch import patch_model_with_bettertransformer
-from .stateful import patch_stateful, raise_if_openvino_is_too_old
+from .model_patcher import patch_model_with_bettertransformer
+from .stateful import ensure_stateful_is_available, patch_stateful
 from .utils import (
     OV_XML_FILE_NAME,
     clear_class_registry,
@@ -128,7 +128,7 @@ def export(
             Compression ratio between primary and backup precision (only relevant to INT4).
         input_shapes (`Optional[Dict]`, defaults to `None`):
             If specified, allows to use specific shapes for the example input provided to the exporter.
-         stateful (`Optional[bool]`):
+        stateful (`Optional[bool]`, defaults to `False`):
             Produce stateful model where all kv-cache inputs and outputs are hidden in the model and are not exposed as model inputs and outputs
 
     Returns:
@@ -240,8 +240,6 @@ def export_pytorch_via_onnx(
             `int4_sym_g64` - INT4 symmetric weights w/ group size 64, "int4_asym_g64" - as previous but asymmetric w/ zero-point.
         compression_ratio (`Optional[float]`, defaults to `None`):
             Compression ratio between primary and backup precision (only relevant to INT4).
-        stateful (`Optional[bool]`):
-            Produce stateful model where all kv-cache inputs and outputs are hidden in the model and are not exposed as model inputs and outputs
 
     Returns:
         `Tuple[List[str], List[str], bool]`: A tuple with an ordered list of the model's inputs, and the named inputs from
@@ -305,7 +303,7 @@ def export_pytorch(
             `int4_sym_g64` - INT4 symmetric weights w/ group size 64, "int4_asym_g64" - as previous but asymmetric w/ zero-point.
         compression_ratio (`Optional[float]`, defaults to `None`):
             Compression ratio between primary and backup precision (only relevant to INT4).
-        stateful (`Optional[bool]`):
+        stateful (`Optional[bool]`, defaults to `False`):
             Produce stateful model where all kv-cache inputs and outputs are hidden in the model and are not exposed as model inputs and outputs
 
     Returns:
@@ -406,9 +404,11 @@ def export_pytorch(
             if patch_model_forward:
                 model.forward = orig_forward
             if stateful:
-                raise ValueError(
-                    "Making stateful models is not supported when exporting to ONNX as an intermediate step. "
-                    "Set stateful=False, or provide a model that can be converted to OpenVINO without fallback to ONNX conversion path."
+                # cannot raise because stateful is enabled by default and it would break backward compatibility for models that couldn't convert to OV directly
+                # TODO: Implement stateful for ONNX path as well, not doing it right now because of lack of validation
+                logger.warn(
+                    "[ WARNING ] Making stateful models is not supported when exporting to ONNX as an intermediate step. Stateless model will be exported instead. "
+                    "Provide a model that can be converted to OpenVINO without fallback to ONNX conversion path."
                 )
             return export_pytorch_via_onnx(
                 model,
@@ -486,7 +486,7 @@ def export_models(
             Compression ratio between primary and backup precision (only relevant to INT4).
         model_kwargs (Optional[Dict[str, Any]], optional):
             Additional kwargs for model export.
-        stateful (`Optional[bool]`)
+        stateful (`Optional[bool]`, defaults to `False`)
             Produce stateful model where all kv-cache inputs and outputs are hidden in the model and are not exposed as model inputs and outputs
 
     Raises:
@@ -497,7 +497,7 @@ def export_models(
     """
     if stateful:
         # This will be checked anyway after the model conversion, but checking it earlier will save time for a user if not suitable version is used
-        raise_if_openvino_is_too_old()
+        ensure_stateful_is_available()
     outputs = []
 
     if output_names is not None and len(output_names) != len(models_and_onnx_configs):

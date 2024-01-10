@@ -304,18 +304,20 @@ class OVQuantizer(OptimumQuantizer):
                 data_cache.append(*args)
                 return self.request(*args, *kwargs)
 
-            def infer(self, inputs: Any = None, shared_memory: bool = False):
+            def infer(self, inputs: Any = None, share_inputs: bool = False):
                 data_cache.append(inputs)
-                return self.request.infer(inputs, shared_memory)
+                return self.request.infer(inputs, share_inputs)
 
             def start_async(
                 self,
                 inputs: Any = None,
                 userdata: Any = None,
-                shared_memory: bool = False,
+                share_inputs: bool = False,
+                *,
+                shared_memory: Any = None,
             ):
                 data_cache.append(inputs)
-                self.request.infer(inputs, shared_memory)
+                self.request.infer(inputs, share_inputs, share_outputs=True, shared_memory=shared_memory)
 
             def wait(self):
                 pass
