@@ -32,7 +32,7 @@ def gen_thread(prompt):
 prompt1 = [" The weather is "]
 x = threading.Thread(target=gen_thread, args=(prompt1,))
 x.start()
-prompt2 = [" Openvino is a "]
+prompt2 = [" Openvino is a ", "The relativity theory is created "]
 y = threading.Thread(target=gen_thread, args=(prompt2,))
 y.start()
 

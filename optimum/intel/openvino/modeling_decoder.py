@@ -354,7 +354,7 @@ class OVModelForCausalLM(OVBaseDecoderModel, GenerationMixin):
 
     def create_infer_request(self):
         if self.compiled_model is None:
-            super().compile()        
+            self.compile()        
         return self.compiled_model.create_infer_request()
 
     def generate(self, *args, **kwargs):
@@ -370,7 +370,7 @@ class OVModelForCausalLM(OVBaseDecoderModel, GenerationMixin):
     def forward(
         self,
         input_ids: torch.LongTensor,
-        infer_request: openvino.runtime.InferRequest,
+        infer_request: openvino.runtime.InferRequest = None,
         attention_mask: Optional[torch.LongTensor] = None,
         past_key_values: Optional[Tuple[Tuple[torch.FloatTensor]]] = None,
         position_ids: Optional[torch.LongTensor] = None,
