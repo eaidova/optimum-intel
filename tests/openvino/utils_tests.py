@@ -92,7 +92,7 @@ MODEL_NAMES = {
 }
 
 OV_CONFIG = {"INFERENCE_PRECISION_HINT": "f32", "NUM_STREAMS": 1}
-#OV_CONFIG = {"NUM_STREAMS": 1}
+
 
 TENSOR_ALIAS_TO_TYPE = {
     "pt": torch.Tensor,

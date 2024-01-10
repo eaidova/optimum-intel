@@ -533,7 +533,6 @@ class OVModelPart:
         }
         self.ov_config = ov_config or {**self.parent_model.ov_config}
         self.compiled_model = None
-        print("COMPILED_MODEL", self.compiled_model)
         self._model_name = model_name
         self._model_dir = Path(model_dir or parent_model._model_save_dir)
         config_path = self._model_dir / model_name / self.CONFIG_NAME
