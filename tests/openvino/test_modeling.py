@@ -126,7 +126,7 @@ class OVModelIntegrationTest(unittest.TestCase):
         loaded_model = OVModelForSequenceClassification.from_pretrained(self.OV_MODEL_ID, ov_config=ov_config)
         self.assertTrue(manual_openvino_cache_dir.is_dir())
         self.assertGreaterEqual(len(list(manual_openvino_cache_dir.glob("*.blob"))), 1)
-        self.assertEqual(loaded_model.request.get_property("PERFORMANCE_HINT").name, "THROUGHPUT")
+        self.assertEqual(loaded_model.compiled_model.get_property("PERFORMANCE_HINT"), "THROUGHPUT")
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             loaded_model.save_pretrained(tmpdirname)
@@ -538,7 +538,7 @@ class OVModelForCausalLMIntegrationTest(unittest.TestCase):
     def test_multiple_inputs(self, model_arch):
         model_id = MODEL_NAMES[model_arch]
         set_seed(SEED)
-        model = OVModelForCausalLM.from_pretrained(model_id, export=True, compile=False)
+        model = OVModelForCausalLM.from_pretrained(model_id, export=True, compile=False, ov_config=OV_CONFIG)
         tokenizer = AutoTokenizer.from_pretrained(model_id)
         tokenizer.pad_token = tokenizer.eos_token
         texts = ["this is a simple input", "this is a second simple input", "this is a third simple input"]
@@ -847,9 +847,6 @@ class OVModelForImageClassificationIntegrationTest(unittest.TestCase):
             self.assertIn("logits", ov_outputs)
             self.assertIsInstance(ov_outputs.logits, TENSOR_ALIAS_TO_TYPE[input_type])
             # Compare tensor outputs
-            print(model_id)
-            print(torch.Tensor(ov_outputs.logits))
-            print(timm_outputs)
             self.assertTrue(torch.allclose(torch.Tensor(ov_outputs.logits), timm_outputs, atol=0.4))
         gc.collect()
 

@@ -397,8 +397,6 @@ class OVtableDiffusionXLPipelineTest(unittest.TestCase):
                 outputs = pipeline(latents=torch.from_numpy(latents), output_type=output_type, **kwargs).images
 
             # Compare model outputs
-                print(ov_outputs)
-                print(outputs)
             self.assertTrue(np.allclose(ov_outputs, outputs, atol=1e-4))
         # Compare model devices
         self.assertEqual(pipeline.device.type, ov_pipeline.device)

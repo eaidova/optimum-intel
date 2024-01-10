@@ -266,7 +266,6 @@ class OVModelForQuestionAnswering(OVModel):
 
         # Run inference
         infer_request = self.compiled_model.create_infer_request()
-        print("INFER_REQUEST", type(infer_request), dir(infer_request))
         infer_request.start_async(inputs)
         infer_request.wait()
         start_logits = (
