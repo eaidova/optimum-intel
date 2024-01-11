@@ -136,7 +136,6 @@ class OVBaseDecoderModel(OVModel):
         self.key_value_output_names = [key for key in self.output_names if "present" in key]
         self._original_model = self.model.clone()  # keep original model for serialization
         self._pkv_precision = Type.f32
-        self.next_beam_idx = None
         self.update_pkv_precision()
         if self.is_dynamic:
             self.model = self._reshape(self.model, -1, -1)
@@ -425,7 +424,8 @@ class OVModelForCausalLM(OVBaseDecoderModel, GenerationMixin):
 
                 # Set initial value for the next beam_idx input that will be used at the current iteration
                 # and will be optionally updated by _reorder_cache at the next iterations if beam_search is used
-                self.next_beam_idx = np.arange(batch_size, dtype=int)
+                next_beam_idx = np.arange(batch_size, dtype=int)
+                #print("next_beam_idx",next_beam_idx)
 
         inputs["input_ids"] = np.array(input_ids)
         # Add the attention_mask inputs when needed
@@ -453,9 +453,12 @@ class OVModelForCausalLM(OVBaseDecoderModel, GenerationMixin):
 
         if "beam_idx" in self.input_names:
             inputs["beam_idx"] = (
-                self.next_beam_idx if self.next_beam_idx is not None else np.arange(batch_size, dtype=int)
+                np.arange(batch_size, dtype=int)
             )
-
+        #if "beam_idx" in self.input_names:
+        #    inputs["beam_idx"] = (
+        #        self.next_beam_idx if self.next_beam_idx is not None else np.arange(batch_size, dtype=int)
+        #    )
         # Run inference
         infer_request.start_async(inputs, share_inputs=True)
         infer_request.wait()
