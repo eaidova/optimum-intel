@@ -349,6 +349,7 @@ class OVModelForCausalLM(OVBaseDecoderModel, GenerationMixin):
     def generate(self, *args, **kwargs):
         if kwargs.get("infer_request") is None:
             kwargs["infer_request"] = self.create_infer_request()
+            kwargs["next_beam_idx"] = [None]
         return super().generate(*args, **kwargs)
 
     def __call__(self, *args, **kwargs):
@@ -360,12 +361,14 @@ class OVModelForCausalLM(OVBaseDecoderModel, GenerationMixin):
         self,
         input_ids: torch.LongTensor,
         infer_request: openvino.runtime.InferRequest = None,
+        next_beam_idx = [None],
         attention_mask: Optional[torch.LongTensor] = None,
         past_key_values: Optional[Tuple[Tuple[torch.FloatTensor]]] = None,
         position_ids: Optional[torch.LongTensor] = None,
         **kwargs,
     ) -> CausalLMOutputWithPast:
         self.compile()
+
         if self.use_cache and past_key_values is not None:
             input_ids = input_ids[:, -1:]
 
@@ -424,8 +427,7 @@ class OVModelForCausalLM(OVBaseDecoderModel, GenerationMixin):
 
                 # Set initial value for the next beam_idx input that will be used at the current iteration
                 # and will be optionally updated by _reorder_cache at the next iterations if beam_search is used
-                next_beam_idx = np.arange(batch_size, dtype=int)
-                #print("next_beam_idx",next_beam_idx)
+                next_beam_idx[0] = np.arange(batch_size, dtype=int)
 
         inputs["input_ids"] = np.array(input_ids)
         # Add the attention_mask inputs when needed
@@ -453,12 +455,8 @@ class OVModelForCausalLM(OVBaseDecoderModel, GenerationMixin):
 
         if "beam_idx" in self.input_names:
             inputs["beam_idx"] = (
-                np.arange(batch_size, dtype=int)
+                next_beam_idx[0] if next_beam_idx[0] is not None else np.arange(batch_size, dtype=int)
             )
-        #if "beam_idx" in self.input_names:
-        #    inputs["beam_idx"] = (
-        #        self.next_beam_idx if self.next_beam_idx is not None else np.arange(batch_size, dtype=int)
-        #    )
         # Run inference
         infer_request.start_async(inputs, share_inputs=True)
         infer_request.wait()
@@ -483,6 +481,7 @@ class OVModelForCausalLM(OVBaseDecoderModel, GenerationMixin):
         attention_mask = kwargs.get("attention_mask", None)
         use_cache = kwargs.get("use_cache", None)
         infer_request = kwargs.get("infer_request", None)
+        next_beam_idx = kwargs.get("next_beam_idx ", None)
         position_ids = kwargs.get("position_ids", None)
         if attention_mask is not None and position_ids is None:
             # create position_ids on the fly for batch generation
@@ -498,6 +497,7 @@ class OVModelForCausalLM(OVBaseDecoderModel, GenerationMixin):
             "position_ids": position_ids,
             "attention_mask": attention_mask,
             "infer_request": infer_request,
+            "next_beam_idx ": next_beam_idx,
         }
 
     # Adapted from transformers.models.gpt2.modeling_gpt2.GPT2LMHeadModel._reorder_cache
@@ -509,6 +509,7 @@ class OVModelForCausalLM(OVBaseDecoderModel, GenerationMixin):
         [`~PreTrainedModel.beam_sample`] is called.
         This is required to match `past_key_values` with the correct beam_idx at every generation step.
         """
+
         if self.stateful:
             # TODO: Apply it differently based on model type
             # TODO: At least for bloom we need to replicate values for each attention head
