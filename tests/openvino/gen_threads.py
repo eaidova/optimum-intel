@@ -1,18 +1,18 @@
 from optimum.intel import OVModelForCausalLM
-from transformers import AutoTokenizer, AutoConfig
+from transformers import AutoTokenizer, AutoConfig, LlamaTokenizer
 import threading
 
 model_path = "/home/devuser/openvino.genai/llm_bench/python/llama-2-7b-chat-hf-stateful/pytorch/dldt/compressed_weights/OV_FP16-INT8/"
-tokenizer = AutoTokenizer.from_pretrained(model_path)
-tokenizer.add_special_tokens({'pad_token': '[PAD]'})
+model_path = "/home/devuser/openvino.genai/llm_bench/python/llama-2-7b-chat-hf/pytorch/dldt/compressed_weights/OV_FP16-INT8/"
+tokenizer = LlamaTokenizer.from_pretrained(model_path)
+tokenizer.pad_token = "[PAD]"
+tokenizer.padding_side = "left"
 
 prompt1 = [" The weather is "]
 prompt2 = [" Openvino is a ", "The relativity theory is created "]
-prompt3 = [" Are cats smarter that dogs ", " How big is an elephant ", " How small could be a red ant "]
-#prompt3 = [" Are cats smarter that dogs ", " How big is an elephant ", " the water in the ocean is much hotter than before  "] gives error
+#prompt3 = [" Are cats smarter that dogs ", " How big is an elephant ", " How small could be a red ant "]
+prompt3 = [" Are cats smarter that dogs ", " How big is an elephant ", " the water in the ocean is much hotter than before  "]
 
-test = tokenizer(prompt3, return_tensors="pt", padding=True)
-print("TEST", test)
 
 OV_CONFIG = {'PERFORMANCE_HINT': 'LATENCY', 'CACHE_DIR': '','NUM_STREAMS': '1'}
 model = OVModelForCausalLM.from_pretrained(model_path, config=AutoConfig.from_pretrained(model_path, trust_remote_code=True),ov_config=OV_CONFIG)
@@ -21,9 +21,7 @@ model = OVModelForCausalLM.from_pretrained(model_path, config=AutoConfig.from_pr
 results = [None]*3
 
 def gen_thread(prompt, results, i):
-    print("prompt:", prompt)
     inputs = tokenizer(prompt, return_tensors="pt", padding=True)
-    print(inputs)
     generate_kwargs = dict(
             input_ids=inputs.input_ids,
             max_new_tokens=50,
