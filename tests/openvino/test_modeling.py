@@ -573,11 +573,11 @@ class OVModelForCausalLMIntegrationTest(unittest.TestCase):
         model_id = MODEL_NAMES["gpt2"]
         tokenizer = AutoTokenizer.from_pretrained(model_id)
         tokens = tokenizer("This is a sample input", return_tensors="pt")
-        model_with_pkv = OVModelForCausalLM.from_pretrained(model_id, export=True, use_cache=True, stateful=False)
+        model_with_pkv = OVModelForCausalLM.from_pretrained(model_id, export=True, use_cache=True, stateful=False, ov_config=OV_CONFIG)
         outputs_model_with_pkv = model_with_pkv.generate(
             **tokens, min_length=self.GENERATION_LENGTH, max_length=self.GENERATION_LENGTH, num_beams=1
         )
-        model_without_pkv = OVModelForCausalLM.from_pretrained(model_id, export=True, use_cache=False)
+        model_without_pkv = OVModelForCausalLM.from_pretrained(model_id, export=True, use_cache=False, ov_config=OV_CONFIG)
         outputs_model_without_pkv = model_without_pkv.generate(
             **tokens, min_length=self.GENERATION_LENGTH, max_length=self.GENERATION_LENGTH, num_beams=1
         )
