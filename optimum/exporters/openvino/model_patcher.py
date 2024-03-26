@@ -771,3 +771,34 @@ class OLMoModelPatcher(DecoderModelPatcher):
         self._model.model.get_alibi_attention_bias = self._model.model._orig_get_alibi_attention_bias
         for block in self._model.model.transformer.blocks:
             block.rotary_emb.get_rotary_embedding = block.rotary_emb._orig_get_rotary_embedding
+
+
+def deepseek_moe_infer(self, x, flat_expert_indices, flat_expert_weights):
+    expert_cache = torch.zeros_like(x)
+    token_idxs = flat_expert_indices // self.num_experts_per_tok
+    for i in range(len(self.experts)):
+        expert = self.experts[i]
+        idx, top_x = torch.where(flat_expert_indices == i)
+        expert_weights = flat_expert_weights[idx]
+        expert_tokens = x[token_idxs[idx]]
+        expert_out = expert(expert_tokens)
+        expert_out.mul_(expert_weights)
+        expert_cache.scatter_reduce_(0, top_x.view(-1, 1).repeat(1, x.shape[-1]), expert_out, reduce='sum')
+    return expert_cache
+
+
+class DeepseekModelPatcher(DecoderModelPatcher):
+    def __enter__(self):
+        super().__enter__()
+        for decoder_layer in self._model.model.layers:
+            if decoder_layer.self_attn.rotary_emb.max_seq_len_cached is None:
+                decoder_layer.self_attn.rotary_emb._set_cos_sin_cache(self._model.config.max_position_embeddings, torch.device("cpu"), torch.float32)
+            if hasattr(decoder_layer.mlp, "moe_infer"):
+                decoder_layer.mlp._orig_moe_infer = decoder_layer.mlp.moe_infer
+                decoder_layer.mlp.moe_infer = types.MethodType(deepseek_moe_infer, decoder_layer.mlp)
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        super().__exit__(exc_type, exc_value, traceback)
+        for decoder_layer in self._model.model.layers:
+            if hasattr(decoder_layer.mlp, "moe_infer"):
+                decoder_layer.mlp.moe_infer = decoder_layer.mlp._orig_moe_infer
