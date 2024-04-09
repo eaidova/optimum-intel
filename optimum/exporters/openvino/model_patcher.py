@@ -344,33 +344,6 @@ def _llama_gemma_update_causal_mask(self, attention_mask, input_tensor, cache_po
     return causal_mask
 
 
-class GemmaModelPatcher(DecoderModelPatcher):
-    def __enter__(self):
-        super().__enter__()
-
-        # gemma has some accuracy issues with bf16 with transformers >= 4.39
-        # fill causal mask in slightly different way for avoid overflow on some platforms
-        if is_transformers_version(">=", "4.39.0"):
-            self._model.model._orig_update_causal_mask = self._model.model._update_causal_mask
-            self._model.model._update_causal_mask = types.MethodType(
-                _llama_gemma_update_causal_mask, self._model.model
-            )
-
-        # init inv_freq for torchscript tracing
-        # https://github.com/huggingface/transformers/blob/ed74d97871468f3a4695ede50abdc0b55717a84d/src/transformers/models/gemma/modeling_gemma.py#L108
-        for layer in self._model.model.layers:
-            if layer.self_attn.rotary_emb.inv_freq is None:
-                rotary_emb = layer.self_attn.rotary_emb
-                layer.self_attn.rotary_emb.inv_freq = 1.0 / (
-                    rotary_emb.base ** (torch.arange(0, rotary_emb.dim, 2, dtype=torch.int64).float() / rotary_emb.dim)
-                )
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        super().__exit__(exc_type, exc_value, traceback)
-        if hasattr(self._model.model, "_orig_update_causal_mask"):
-            self._model.model._update_causal_mask = self._model.model._orig_update_causal_mask
-
-
 class LlamaModelPatcher(DecoderModelPatcher):
     def __enter__(self):
         super().__enter__()
@@ -387,6 +360,20 @@ class LlamaModelPatcher(DecoderModelPatcher):
         super().__exit__(exc_type, exc_value, traceback)
         if hasattr(self._model.model, "_orig_update_causal_mask"):
             self._model.model._update_causal_mask = self._model.model._orig_update_causal_mask
+
+
+class GemmaModelPatcher(LlamaModelPatcher):
+    def __enter__(self):
+        super().__enter__()
+
+        # init inv_freq for torchscript tracing
+        # https://github.com/huggingface/transformers/blob/ed74d97871468f3a4695ede50abdc0b55717a84d/src/transformers/models/gemma/modeling_gemma.py#L108
+        for layer in self._model.model.layers:
+            if layer.self_attn.rotary_emb.inv_freq is None:
+                rotary_emb = layer.self_attn.rotary_emb
+                layer.self_attn.rotary_emb.inv_freq = 1.0 / (
+                    rotary_emb.base ** (torch.arange(0, rotary_emb.dim, 2, dtype=torch.int64).float() / rotary_emb.dim)
+                )
 
 
 SUPPORT_SDPA = is_torch_version(">", "2.1.0")
