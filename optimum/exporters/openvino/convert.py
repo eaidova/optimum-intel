@@ -32,7 +32,13 @@ from optimum.exporters.onnx.base import OnnxConfig
 from optimum.exporters.onnx.convert import check_dummy_inputs_are_allowed
 from optimum.exporters.onnx.convert import export_pytorch as export_pytorch_to_onnx
 from optimum.exporters.onnx.convert import export_tensorflow as export_tensorflow_onnx
-from optimum.exporters.utils import _get_submodels_and_export_configs, ENCODER_NAME, DECODER_NAME, DECODER_WITH_PAST_NAME, _get_submodels_for_export_encoder_decoder
+from optimum.exporters.utils import (
+    DECODER_NAME,
+    DECODER_WITH_PAST_NAME,
+    ENCODER_NAME,
+    _get_submodels_and_export_configs,
+    _get_submodels_for_export_encoder_decoder,
+)
 from optimum.intel.utils.import_utils import (
     _nncf_version,
     _optimum_intel_version,
@@ -544,7 +550,9 @@ def export_from_model(
 
         logger.info(f"Automatic task detection to: {task}.")
 
-    stateful = stateful and ensure_export_task_support_stateful(task, model.config.is_encoder_decoder)
+    stateful = stateful and ensure_export_task_support_stateful(
+        task, getattr(model.config, "is_encoder_decoder", False)
+    )
     # TODO: support onnx_config.py in the model repo
     if custom_architecture and custom_export_configs is None:
         raise ValueError(
@@ -576,13 +584,13 @@ def export_from_model(
 
     logging.disable(logging.INFO)
 
-    if (model.config.is_encoder_decoder and task.startswith(TasksManager._ENCODER_DECODER_TASKS)) and stateful and not custom_architecture:
+    if (
+        (task.startswith(TasksManager._ENCODER_DECODER_TASKS) and getattr(model.config, "is_encoder_decoder", False))
+        and stateful
+        and not custom_architecture
+    ):
         export_config, models_and_export_configs = _get_encoder_decoder_stateful_models_for_export(
-            model=model,
-            task=task,
-            preprocessors=preprocessors,
-            library_name=library_name,
-            _variant="default"
+            model=model, task=task, preprocessors=preprocessors, library_name=library_name, _variant="default"
         )
         stateful = [False, True]
     else:
@@ -773,9 +781,7 @@ def _get_encoder_decoder_stateful_models_for_export(
     )
 
     export_config.variant = _variant
-    all_variants = "\n".join(
-        [f"    - {name}: {description}" for name, description in export_config.VARIANTS.items()]
-    )
+    all_variants = "\n".join([f"    - {name}: {description}" for name, description in export_config.VARIANTS.items()])
     logger.info(f"Using the export variant {export_config.variant}. Available variants are:\n{all_variants}")
 
     models_for_export = _get_submodels_for_export_encoder_decoder(model, use_past=True)
@@ -783,13 +789,14 @@ def _get_encoder_decoder_stateful_models_for_export(
     encoder_export_config = export_config.with_behavior("encoder")
     models_for_export[ENCODER_NAME] = (models_for_export[ENCODER_NAME], encoder_export_config)
 
-    decoder_export_config_with_past = export_config.with_behavior("decoder", use_past=True, use_past_in_inputs=True, stateful=True)
+    decoder_export_config_with_past = export_config.with_behavior(
+        "decoder", use_past=True, use_past_in_inputs=True, stateful=True
+    )
     decoder_with_past_model = models_for_export.pop(DECODER_WITH_PAST_NAME)
     models_for_export[DECODER_NAME] = (
         decoder_with_past_model,
         decoder_export_config_with_past,
     )
     logger.info(models_for_export.keys())
-
 
     return None, models_for_export
