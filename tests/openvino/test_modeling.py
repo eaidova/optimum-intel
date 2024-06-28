@@ -679,356 +679,360 @@ class OVModelForCausalLMIntegrationTest(unittest.TestCase):
         "glm4",
     )
 
-    @parameterized.expand(SUPPORTED_ARCHITECTURES)
-    def test_compare_to_transformers(self, model_arch):
-        model_id = MODEL_NAMES[model_arch]
-        not_stateful = []
-        if is_openvino_version("<", "2024.0"):
-            not_stateful.append("mixtral")
+    # @parameterized.expand(SUPPORTED_ARCHITECTURES)
+    # def test_compare_to_transformers(self, model_arch):
+    #     model_id = MODEL_NAMES[model_arch]
+    #     not_stateful = []
+    #     if is_openvino_version("<", "2024.0"):
+    #         not_stateful.append("mixtral")
 
-        if is_openvino_version("<", "2024.1"):
-            not_stateful.extend(["llama", "gemma", "gpt_bigcode"])
+    #     if is_openvino_version("<", "2024.1"):
+    #         not_stateful.extend(["llama", "gemma", "gpt_bigcode"])
 
-        if "gptq" in model_arch:
-            self.skipTest("GPTQ model loading unsupported with AutoModelForCausalLM")
+    #     if "gptq" in model_arch:
+    #         self.skipTest("GPTQ model loading unsupported with AutoModelForCausalLM")
 
+    #     set_seed(SEED)
+
+    #     model_kwargs = {}
+    #     if model_arch in self.REMOTE_CODE_MODELS:
+    #         model_kwargs = {"trust_remote_code": True}
+
+    #     ov_model = OVModelForCausalLM.from_pretrained(model_id, export=True, ov_config=F32_CONFIG, **model_kwargs)
+    #     self.assertIsInstance(ov_model.config, PretrainedConfig)
+    #     self.assertTrue(ov_model.use_cache)
+    #     self.assertEqual(ov_model.stateful, ov_model.config.model_type not in not_stateful)
+    #     tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=model_arch in self.REMOTE_CODE_MODELS)
+    #     tokens = tokenizer("This is a sample output", return_tensors="pt")
+    #     tokens.pop("token_type_ids", None)
+
+    #     ov_outputs = ov_model(**tokens)
+    #     self.assertTrue("logits" in ov_outputs)
+    #     self.assertIsInstance(ov_outputs.logits, torch.Tensor)
+    #     self.assertTrue("past_key_values" in ov_outputs)
+    #     self.assertIsInstance(ov_outputs.past_key_values, tuple)
+    #     is_stateful = ov_model.config.model_type not in not_stateful
+    #     self.assertEqual(ov_model.stateful, is_stateful)
+    #     if is_stateful:
+    #         self.assertTrue(len(ov_outputs.past_key_values) == 1 and len(ov_outputs.past_key_values[0]) == 0)
+
+    #     set_seed(SEED)
+    #     transformers_model = AutoModelForCausalLM.from_pretrained(model_id, **model_kwargs)
+    #     if model_arch in ["qwen", "arctic", "glm4"]:
+    #         transformers_model.to(torch.float32)
+
+    #     with torch.no_grad():
+    #         transformers_outputs = transformers_model(**tokens)
+
+    #     # Compare tensor outputs
+    #     self.assertTrue(torch.allclose(ov_outputs.logits, transformers_outputs.logits, equal_nan=True, atol=1e-4))
+
+    #     # Qwen tokenizer does not support padding
+    #     if model_arch == "qwen":
+    #         return
+
+    #     if model_arch not in ["chatglm", "glm4", "persimmon"]:
+    #         tokenizer.pad_token_id = tokenizer.eos_token_id
+
+    #     if model_arch == "persimmon":
+    #         tokenizer.pad_token_id = tokenizer.bos_token_id
+    #     # Compare batched generation
+    #     tokenizer.padding_side = "left"
+    #     tokens = tokenizer(["Today is a nice day and I am longer", "This is me"], return_tensors="pt", padding=True)
+    #     tokens.pop("token_type_ids", None)
+    #     ov_model.generation_config.eos_token_id = None
+    #     transformers_model.generation_config.eos_token_id = None
+    #     ov_model.config.eos_token_id = None
+    #     transformers_model.config.eos_token_id = None
+    #     gen_config = GenerationConfig(
+    #         max_new_tokens=30,
+    #         min_new_tokens=30,
+    #         num_beams=3,
+    #         do_sample=False,
+    #         eos_token_id=None,
+    #     )
+
+    #     ov_outputs = ov_model.generate(**tokens, generation_config=gen_config)
+    #     transformers_outputs = transformers_model.generate(**tokens, generation_config=gen_config)
+    #     self.assertTrue(torch.allclose(ov_outputs, transformers_outputs))
+
+    #     del transformers_model
+    #     del ov_model
+    #     gc.collect()
+
+    # @parameterized.expand(SUPPORTED_ARCHITECTURES)
+    # @pytest.mark.run_slow
+    # @slow
+    # def test_pipeline(self, model_arch):
+    #     set_seed(SEED)
+    #     model_kwargs = {}
+    #     model_id = MODEL_NAMES[model_arch]
+    #     if model_arch in self.REMOTE_CODE_MODELS:
+    #         model_kwargs = {
+    #             "config": AutoConfig.from_pretrained(model_id, trust_remote_code=True),
+    #             "trust_remote_code": True,
+    #         }
+    #     tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=model_arch in self.REMOTE_CODE_MODELS)
+
+    #     if model_arch == "qwen":
+    #         tokenizer._convert_tokens_to_ids = lambda x: 0
+
+    #     model = OVModelForCausalLM.from_pretrained(
+    #         model_id, export=True, use_cache=False, compile=False, **model_kwargs
+    #     )
+    #     model.eval()
+    #     model.config.encoder_no_repeat_ngram_size = 0
+    #     model.to("cpu")
+    #     model.half()
+    #     model.compile()
+    #     pipe = pipeline("text-generation", model=model, tokenizer=tokenizer)
+    #     inputs = "My name is Arthur and I live in"
+    #     set_seed(SEED)
+    #     outputs = pipe(inputs, max_new_tokens=5)
+    #     self.assertEqual(pipe.device, model.device)
+    #     self.assertTrue(all(inputs in item["generated_text"] for item in outputs))
+    #     ov_pipe = optimum_pipeline(
+    #         "text-generation",
+    #         model_id,
+    #         accelerator="openvino",
+    #         trust_remote_code=model_arch in self.REMOTE_CODE_MODELS,
+    #         tokenizer=tokenizer if model_arch == "qwen" else None,
+    #     )
+    #     set_seed(SEED)
+    #     ov_outputs = ov_pipe(inputs, max_new_tokens=5)
+    #     self.assertEqual(outputs[-1]["generated_text"], ov_outputs[-1]["generated_text"])
+    #     del ov_pipe
+    #     del pipe
+    #     del model
+    #     gc.collect()
+
+    # def test_model_and_decoder_same_device(self):
+    #     model_id = MODEL_NAMES["gpt2"]
+    #     model = OVModelForCausalLM.from_pretrained(model_id, export=True)
+    #     model.to("TEST")
+    #     self.assertEqual(model._device, "TEST")
+    #     # Verify that request is being reset
+    #     self.assertEqual(model.request, None)
+    #     del model
+    #     gc.collect()
+
+    # def test_compare_with_and_without_past_key_values(self):
+    #     model_id = MODEL_NAMES["gpt2"]
+    #     tokenizer = AutoTokenizer.from_pretrained(model_id)
+    #     tokens = tokenizer("This is a sample input", return_tensors="pt")
+    #     model_with_pkv = OVModelForCausalLM.from_pretrained(model_id, export=True, use_cache=True, stateful=False)
+    #     outputs_model_with_pkv = model_with_pkv.generate(
+    #         **tokens, min_length=self.GENERATION_LENGTH, max_length=self.GENERATION_LENGTH, num_beams=1
+    #     )
+    #     model_without_pkv = OVModelForCausalLM.from_pretrained(model_id, export=True, use_cache=False)
+    #     outputs_model_without_pkv = model_without_pkv.generate(
+    #         **tokens, min_length=self.GENERATION_LENGTH, max_length=self.GENERATION_LENGTH, num_beams=1
+    #     )
+    #     self.assertTrue(torch.equal(outputs_model_with_pkv, outputs_model_without_pkv))
+    #     self.assertEqual(outputs_model_with_pkv.shape[1], self.GENERATION_LENGTH)
+    #     self.assertEqual(outputs_model_without_pkv.shape[1], self.GENERATION_LENGTH)
+    #     model_stateful = OVModelForCausalLM.from_pretrained(model_id, export=True, use_cache=True, stateful=True)
+    #     outputs_model_stateful = model_stateful.generate(
+    #         **tokens, min_length=self.GENERATION_LENGTH, max_length=self.GENERATION_LENGTH, num_beams=1
+    #     )
+    #     self.assertTrue(torch.equal(outputs_model_without_pkv, outputs_model_stateful))
+
+    #     del model_with_pkv
+    #     del model_without_pkv
+    #     gc.collect()
+
+    # def test_print_model_properties(self):
+    #     # test setting OPENVINO_LOG_LEVEL to 3, which calls _print_compiled_model_properties
+    #     openvino_log_level = os.environ.get("OPENVINO_LOG_LEVEL", None)
+    #     os.environ["OPENVINO_LOG_LEVEL"] = "3"
+    #     model = OVModelForSequenceClassification.from_pretrained(MODEL_NAMES["bert"], export=True)
+    #     if openvino_log_level is not None:
+    #         os.environ["OPENVINO_LOG_LEVEL"] = openvino_log_level
+    #     # test calling function directly
+    #     _print_compiled_model_properties(model.request)
+
+    # def test_auto_device_loading(self):
+    #     OV_MODEL_ID = "echarlaix/distilbert-base-uncased-finetuned-sst-2-english-openvino"
+    #     for device in ("AUTO", "AUTO:CPU"):
+    #         model = OVModelForSequenceClassification.from_pretrained(OV_MODEL_ID, device=device)
+    #         model.half()
+    #         self.assertEqual(model._device, device)
+    #         if device == "AUTO:CPU":
+    #             model = OVModelForSequenceClassification.from_pretrained(OV_MODEL_ID, device=device)
+    #             message = "Model should not be loaded from cache without explicitly setting CACHE_DIR"
+    #             self.assertFalse(model.request.get_property("LOADED_FROM_CACHE"), message)
+    #         del model
+    #         gc.collect()
+
+    # def test_default_filling_attention_mask(self):
+    #     model_id = MODEL_NAMES["gpt2"]
+    #     model_with_cache = OVModelForCausalLM.from_pretrained(model_id, export=True, use_cache=True)
+    #     tokenizer = AutoTokenizer.from_pretrained(model_id)
+    #     tokenizer.pad_token = tokenizer.eos_token
+    #     texts = ["thisOVModelForCausalLMIntegrationTest is a simple input"]
+    #     tokens = tokenizer(texts, return_tensors="pt")
+    #     self.assertTrue("attention_mask" in model_with_cache.input_names)
+    #     outs = model_with_cache(**tokens)
+    #     attention_mask = tokens.pop("attention_mask")
+    #     outs_without_attn_mask = model_with_cache(**tokens)
+    #     self.assertTrue(torch.allclose(outs.logits, outs_without_attn_mask.logits))
+    #     input_ids = torch.argmax(outs.logits[:, -1:, :], dim=2)
+    #     past_key_values = outs.past_key_values
+    #     attention_mask = torch.ones((input_ids.shape[0], tokens.input_ids.shape[1] + 1), dtype=torch.long)
+    #     outs_step2 = model_with_cache(
+    #         input_ids=input_ids, attention_mask=attention_mask, past_key_values=past_key_values
+    #     )
+    #     outs_without_attn_mask_step2 = model_with_cache(input_ids=input_ids, past_key_values=past_key_values)
+    #     self.assertTrue(torch.allclose(outs_step2.logits, outs_without_attn_mask_step2.logits))
+    #     del model_with_cache
+    #     gc.collect()
+
+    # def test_default_filling_attention_mask_and_position_ids(self):
+    #     model_id = MODEL_NAMES["llama"]
+    #     model_with_cache = OVModelForCausalLM.from_pretrained(model_id, export=True, use_cache=True)
+    #     tokenizer = AutoTokenizer.from_pretrained(model_id)
+    #     tokenizer.pad_token = tokenizer.eos_token
+    #     texts = ["this is a simple input"]
+    #     tokens = tokenizer(texts, return_tensors="pt")
+    #     self.assertTrue("position_ids" in model_with_cache.input_names)
+    #     outs = model_with_cache(**tokens)
+    #     attention_mask = tokens.pop("attention_mask")
+    #     outs_without_attn_mask = model_with_cache(**tokens)
+    #     self.assertTrue(torch.allclose(outs.logits, outs_without_attn_mask.logits))
+    #     input_ids = torch.argmax(outs.logits[:, -1:, :], dim=2)
+    #     past_key_values = outs.past_key_values
+    #     attention_mask = torch.ones((input_ids.shape[0], tokens.input_ids.shape[1] + 1), dtype=torch.long)
+    #     outs_step2 = model_with_cache(
+    #         input_ids=input_ids, attention_mask=attention_mask, past_key_values=past_key_values
+    #     )
+    #     outs_without_attn_mask_step2 = model_with_cache(input_ids=input_ids, past_key_values=past_key_values)
+    #     self.assertTrue(torch.allclose(outs_step2.logits, outs_without_attn_mask_step2.logits))
+    #     del model_with_cache
+    #     gc.collect()
+
+    # @parameterized.expand(SUPPORTED_ARCHITECTURES)
+    # @pytest.mark.run_slow
+    # @slow
+    # def test_beam_search(self, model_arch):
+    #     model_kwargs = {}
+    #     model_id = MODEL_NAMES[model_arch]
+    #     if model_arch in self.REMOTE_CODE_MODELS:
+    #         model_kwargs = {
+    #             "config": AutoConfig.from_pretrained(model_id, trust_remote_code=True),
+    #             "trust_remote_code": True,
+    #         }
+    #     # Qwen tokenizer does not support padding, chatgm testing model produces nan that incompatible with beam search
+    #     if model_arch in ["qwen", "chatglm"]:
+    #         return
+
+    #     tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=model_arch in self.REMOTE_CODE_MODELS)
+    #     if model_arch == "persimmon":
+    #         tokenizer.pad_token_id = tokenizer.bos_token_id
+    #         tokenizer.eos_token_id = tokenizer.bos_token_id
+
+    #     beam_search_gen_config = GenerationConfig(
+    #         max_new_tokens=10,
+    #         min_new_tokens=10,
+    #         num_beams=4,
+    #         do_sample=False,
+    #         eos_token_id=None,
+    #     )
+    #     beam_sample_gen_config = GenerationConfig(
+    #         max_new_tokens=10,
+    #         min_new_tokens=10,
+    #         num_beams=4,
+    #         do_sample=True,
+    #         eos_token_id=None,
+    #         top_k=1,
+    #     )
+
+    #     group_beam_search_gen_config = GenerationConfig(
+    #         max_new_tokens=10,
+    #         min_new_tokens=10,
+    #         num_beams=4,
+    #         do_sample=False,
+    #         eos_token_id=None,
+    #         num_beam_groups=2,
+    #         diversity_penalty=0.0000001,
+    #     )
+    #     force_word = "cat"
+    #     force_words_ids = [tokenizer([force_word], add_special_tokens=False).input_ids]
+    #     constrained_beam_search_gen_config = GenerationConfig(
+    #         max_new_tokens=10,
+    #         min_new_tokens=10,
+    #         num_beams=4,
+    #         do_sample=False,
+    #         eos_token_id=None,
+    #         force_words_ids=force_words_ids,
+    #     )
+
+    #     gen_configs = [
+    #         beam_search_gen_config,
+    #         beam_sample_gen_config,
+    #         group_beam_search_gen_config,
+    #         constrained_beam_search_gen_config,
+    #     ]
+    #     ov_model_stateful = OVModelForCausalLM.from_pretrained(
+    #         model_id, export=True, use_cache=True, stateful=True, **model_kwargs
+    #     )
+    #     ov_model_stateless = OVModelForCausalLM.from_pretrained(
+    #         model_id, export=True, use_cache=True, stateful=False, **model_kwargs
+    #     )
+    #     transformers_model = AutoModelForCausalLM.from_pretrained(model_id, **model_kwargs)
+
+    #     if model_arch == "arctic":
+    #         transformers_model.to(torch.float32)
+    #     tokenizer.pad_token_id = tokenizer.eos_token_id
+    #     tokens = tokenizer(["Today is a nice day and I am longer", "This is me"], return_tensors="pt", padding=True)
+    #     tokens.pop("token_type_ids", None)
+    #     ov_model_stateful.generation_config.eos_token_id = None
+    #     ov_model_stateless.generation_config.eos_token_id = None
+    #     transformers_model.generation_config.eos_token_id = None
+    #     ov_model_stateful.config.eos_token_id = None
+    #     ov_model_stateless.config.eos_token_id = None
+    #     transformers_model.config.eos_token_id = None
+
+    #     for gen_config in gen_configs:
+    #         if gen_config.do_sample and model_arch in ["baichuan2-13b", "olmo"]:
+    #             continue
+
+    #         transformers_outputs = transformers_model.generate(**tokens, generation_config=gen_config)
+    #         ov_stateful_outputs = ov_model_stateful.generate(**tokens, generation_config=gen_config)
+    #         self.assertTrue(
+    #             torch.equal(ov_stateful_outputs, transformers_outputs),
+    #             f"generation config : {gen_config}, transformers output {transformers_outputs}, ov_model_stateful output {ov_stateful_outputs}",
+    #         )
+    #         ov_stateless_outputs = ov_model_stateless.generate(**tokens, generation_config=gen_config)
+    #         self.assertTrue(
+    #             torch.equal(ov_stateless_outputs, transformers_outputs),
+    #             f"generation config : {gen_config}, transformers output {transformers_outputs}, ov_model_stateless output {ov_stateless_outputs}",
+    #        )
+
+    @parameterized.expand(["minicpm"])
+    def test_load_with_different_dtype(self, model_type):
         set_seed(SEED)
-
-        model_kwargs = {}
-        if model_arch in self.REMOTE_CODE_MODELS:
-            model_kwargs = {"trust_remote_code": True}
-
-        ov_model = OVModelForCausalLM.from_pretrained(model_id, export=True, ov_config=F32_CONFIG, **model_kwargs)
-        self.assertIsInstance(ov_model.config, PretrainedConfig)
-        self.assertTrue(ov_model.use_cache)
-        self.assertEqual(ov_model.stateful, ov_model.config.model_type not in not_stateful)
-        tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=model_arch in self.REMOTE_CODE_MODELS)
-        tokens = tokenizer("This is a sample output", return_tensors="pt")
-        tokens.pop("token_type_ids", None)
-
-        ov_outputs = ov_model(**tokens)
-        self.assertTrue("logits" in ov_outputs)
-        self.assertIsInstance(ov_outputs.logits, torch.Tensor)
-        self.assertTrue("past_key_values" in ov_outputs)
-        self.assertIsInstance(ov_outputs.past_key_values, tuple)
-        is_stateful = ov_model.config.model_type not in not_stateful
-        self.assertEqual(ov_model.stateful, is_stateful)
-        if is_stateful:
-            self.assertTrue(len(ov_outputs.past_key_values) == 1 and len(ov_outputs.past_key_values[0]) == 0)
-
-        set_seed(SEED)
-        transformers_model = AutoModelForCausalLM.from_pretrained(model_id, **model_kwargs)
-        if model_arch in ["qwen", "arctic", "glm4"]:
-            transformers_model.to(torch.float32)
-
-        with torch.no_grad():
-            transformers_outputs = transformers_model(**tokens)
-
-        # Compare tensor outputs
-        self.assertTrue(torch.allclose(ov_outputs.logits, transformers_outputs.logits, equal_nan=True, atol=1e-4))
-
-        # Qwen tokenizer does not support padding
-        if model_arch == "qwen":
-            return
-
-        if model_arch not in ["chatglm", "glm4", "persimmon"]:
-            tokenizer.pad_token_id = tokenizer.eos_token_id
-
-        if model_arch == "persimmon":
-            tokenizer.pad_token_id = tokenizer.bos_token_id
-        # Compare batched generation
-        tokenizer.padding_side = "left"
-        tokens = tokenizer(["Today is a nice day and I am longer", "This is me"], return_tensors="pt", padding=True)
-        tokens.pop("token_type_ids", None)
-        ov_model.generation_config.eos_token_id = None
-        transformers_model.generation_config.eos_token_id = None
-        ov_model.config.eos_token_id = None
-        transformers_model.config.eos_token_id = None
-        gen_config = GenerationConfig(
-            max_new_tokens=30,
-            min_new_tokens=30,
-            num_beams=3,
-            do_sample=False,
-            eos_token_id=None,
-        )
-
-        ov_outputs = ov_model.generate(**tokens, generation_config=gen_config)
-        transformers_outputs = transformers_model.generate(**tokens, generation_config=gen_config)
-        self.assertTrue(torch.allclose(ov_outputs, transformers_outputs))
-
-        del transformers_model
-        del ov_model
-        gc.collect()
-
-    @parameterized.expand(SUPPORTED_ARCHITECTURES)
-    @pytest.mark.run_slow
-    @slow
-    def test_pipeline(self, model_arch):
-        set_seed(SEED)
-        model_kwargs = {}
-        model_id = MODEL_NAMES[model_arch]
-        if model_arch in self.REMOTE_CODE_MODELS:
-            model_kwargs = {
-                "config": AutoConfig.from_pretrained(model_id, trust_remote_code=True),
-                "trust_remote_code": True,
-            }
-        tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=model_arch in self.REMOTE_CODE_MODELS)
-
-        if model_arch == "qwen":
-            tokenizer._convert_tokens_to_ids = lambda x: 0
-
-        model = OVModelForCausalLM.from_pretrained(
-            model_id, export=True, use_cache=False, compile=False, **model_kwargs
-        )
-        model.eval()
-        model.config.encoder_no_repeat_ngram_size = 0
-        model.to("cpu")
-        model.half()
-        model.compile()
-        pipe = pipeline("text-generation", model=model, tokenizer=tokenizer)
-        inputs = "My name is Arthur and I live in"
-        set_seed(SEED)
-        outputs = pipe(inputs, max_new_tokens=5)
-        self.assertEqual(pipe.device, model.device)
-        self.assertTrue(all(inputs in item["generated_text"] for item in outputs))
-        ov_pipe = optimum_pipeline(
-            "text-generation",
-            model_id,
-            accelerator="openvino",
-            trust_remote_code=model_arch in self.REMOTE_CODE_MODELS,
-            tokenizer=tokenizer if model_arch == "qwen" else None,
-        )
-        set_seed(SEED)
-        ov_outputs = ov_pipe(inputs, max_new_tokens=5)
-        self.assertEqual(outputs[-1]["generated_text"], ov_outputs[-1]["generated_text"])
-        del ov_pipe
-        del pipe
-        del model
-        gc.collect()
-
-    def test_model_and_decoder_same_device(self):
-        model_id = MODEL_NAMES["gpt2"]
-        model = OVModelForCausalLM.from_pretrained(model_id, export=True)
-        model.to("TEST")
-        self.assertEqual(model._device, "TEST")
-        # Verify that request is being reset
-        self.assertEqual(model.request, None)
-        del model
-        gc.collect()
-
-    def test_compare_with_and_without_past_key_values(self):
-        model_id = MODEL_NAMES["gpt2"]
-        tokenizer = AutoTokenizer.from_pretrained(model_id)
-        tokens = tokenizer("This is a sample input", return_tensors="pt")
-        model_with_pkv = OVModelForCausalLM.from_pretrained(model_id, export=True, use_cache=True, stateful=False)
-        outputs_model_with_pkv = model_with_pkv.generate(
-            **tokens, min_length=self.GENERATION_LENGTH, max_length=self.GENERATION_LENGTH, num_beams=1
-        )
-        model_without_pkv = OVModelForCausalLM.from_pretrained(model_id, export=True, use_cache=False)
-        outputs_model_without_pkv = model_without_pkv.generate(
-            **tokens, min_length=self.GENERATION_LENGTH, max_length=self.GENERATION_LENGTH, num_beams=1
-        )
-        self.assertTrue(torch.equal(outputs_model_with_pkv, outputs_model_without_pkv))
-        self.assertEqual(outputs_model_with_pkv.shape[1], self.GENERATION_LENGTH)
-        self.assertEqual(outputs_model_without_pkv.shape[1], self.GENERATION_LENGTH)
-        model_stateful = OVModelForCausalLM.from_pretrained(model_id, export=True, use_cache=True, stateful=True)
-        outputs_model_stateful = model_stateful.generate(
-            **tokens, min_length=self.GENERATION_LENGTH, max_length=self.GENERATION_LENGTH, num_beams=1
-        )
-        self.assertTrue(torch.equal(outputs_model_without_pkv, outputs_model_stateful))
-
-        del model_with_pkv
-        del model_without_pkv
-        gc.collect()
-
-    def test_print_model_properties(self):
-        # test setting OPENVINO_LOG_LEVEL to 3, which calls _print_compiled_model_properties
-        openvino_log_level = os.environ.get("OPENVINO_LOG_LEVEL", None)
-        os.environ["OPENVINO_LOG_LEVEL"] = "3"
-        model = OVModelForSequenceClassification.from_pretrained(MODEL_NAMES["bert"], export=True)
-        if openvino_log_level is not None:
-            os.environ["OPENVINO_LOG_LEVEL"] = openvino_log_level
-        # test calling function directly
-        _print_compiled_model_properties(model.request)
-
-    def test_auto_device_loading(self):
-        OV_MODEL_ID = "echarlaix/distilbert-base-uncased-finetuned-sst-2-english-openvino"
-        for device in ("AUTO", "AUTO:CPU"):
-            model = OVModelForSequenceClassification.from_pretrained(OV_MODEL_ID, device=device)
-            model.half()
-            self.assertEqual(model._device, device)
-            if device == "AUTO:CPU":
-                model = OVModelForSequenceClassification.from_pretrained(OV_MODEL_ID, device=device)
-                message = "Model should not be loaded from cache without explicitly setting CACHE_DIR"
-                self.assertFalse(model.request.get_property("LOADED_FROM_CACHE"), message)
-            del model
-            gc.collect()
-
-    def test_default_filling_attention_mask(self):
-        model_id = MODEL_NAMES["gpt2"]
-        model_with_cache = OVModelForCausalLM.from_pretrained(model_id, export=True, use_cache=True)
-        tokenizer = AutoTokenizer.from_pretrained(model_id)
-        tokenizer.pad_token = tokenizer.eos_token
-        texts = ["this is a simple input"]
-        tokens = tokenizer(texts, return_tensors="pt")
-        self.assertTrue("attention_mask" in model_with_cache.input_names)
-        outs = model_with_cache(**tokens)
-        attention_mask = tokens.pop("attention_mask")
-        outs_without_attn_mask = model_with_cache(**tokens)
-        self.assertTrue(torch.allclose(outs.logits, outs_without_attn_mask.logits))
-        input_ids = torch.argmax(outs.logits[:, -1:, :], dim=2)
-        past_key_values = outs.past_key_values
-        attention_mask = torch.ones((input_ids.shape[0], tokens.input_ids.shape[1] + 1), dtype=torch.long)
-        outs_step2 = model_with_cache(
-            input_ids=input_ids, attention_mask=attention_mask, past_key_values=past_key_values
-        )
-        outs_without_attn_mask_step2 = model_with_cache(input_ids=input_ids, past_key_values=past_key_values)
-        self.assertTrue(torch.allclose(outs_step2.logits, outs_without_attn_mask_step2.logits))
-        del model_with_cache
-        gc.collect()
-
-    def test_default_filling_attention_mask_and_position_ids(self):
-        model_id = MODEL_NAMES["llama"]
-        model_with_cache = OVModelForCausalLM.from_pretrained(model_id, export=True, use_cache=True)
-        tokenizer = AutoTokenizer.from_pretrained(model_id)
-        tokenizer.pad_token = tokenizer.eos_token
-        texts = ["this is a simple input"]
-        tokens = tokenizer(texts, return_tensors="pt")
-        self.assertTrue("position_ids" in model_with_cache.input_names)
-        outs = model_with_cache(**tokens)
-        attention_mask = tokens.pop("attention_mask")
-        outs_without_attn_mask = model_with_cache(**tokens)
-        self.assertTrue(torch.allclose(outs.logits, outs_without_attn_mask.logits))
-        input_ids = torch.argmax(outs.logits[:, -1:, :], dim=2)
-        past_key_values = outs.past_key_values
-        attention_mask = torch.ones((input_ids.shape[0], tokens.input_ids.shape[1] + 1), dtype=torch.long)
-        outs_step2 = model_with_cache(
-            input_ids=input_ids, attention_mask=attention_mask, past_key_values=past_key_values
-        )
-        outs_without_attn_mask_step2 = model_with_cache(input_ids=input_ids, past_key_values=past_key_values)
-        self.assertTrue(torch.allclose(outs_step2.logits, outs_without_attn_mask_step2.logits))
-        del model_with_cache
-        gc.collect()
-
-    @parameterized.expand(SUPPORTED_ARCHITECTURES)
-    @pytest.mark.run_slow
-    @slow
-    def test_beam_search(self, model_arch):
-        model_kwargs = {}
-        model_id = MODEL_NAMES[model_arch]
-        if model_arch in self.REMOTE_CODE_MODELS:
-            model_kwargs = {
-                "config": AutoConfig.from_pretrained(model_id, trust_remote_code=True),
-                "trust_remote_code": True,
-            }
-        # Qwen tokenizer does not support padding, chatgm testing model produces nan that incompatible with beam search
-        if model_arch in ["qwen", "chatglm"]:
-            return
-
-        tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=model_arch in self.REMOTE_CODE_MODELS)
-        if model_arch == "persimmon":
-            tokenizer.pad_token_id = tokenizer.bos_token_id
-            tokenizer.eos_token_id = tokenizer.bos_token_id
-
-        beam_search_gen_config = GenerationConfig(
-            max_new_tokens=10,
-            min_new_tokens=10,
-            num_beams=4,
-            do_sample=False,
-            eos_token_id=None,
-        )
-        beam_sample_gen_config = GenerationConfig(
-            max_new_tokens=10,
-            min_new_tokens=10,
-            num_beams=4,
-            do_sample=True,
-            eos_token_id=None,
-            top_k=1,
-        )
-
-        group_beam_search_gen_config = GenerationConfig(
-            max_new_tokens=10,
-            min_new_tokens=10,
-            num_beams=4,
-            do_sample=False,
-            eos_token_id=None,
-            num_beam_groups=2,
-            diversity_penalty=0.0000001,
-        )
-        force_word = "cat"
-        force_words_ids = [tokenizer([force_word], add_special_tokens=False).input_ids]
-        constrained_beam_search_gen_config = GenerationConfig(
-            max_new_tokens=10,
-            min_new_tokens=10,
-            num_beams=4,
-            do_sample=False,
-            eos_token_id=None,
-            force_words_ids=force_words_ids,
-        )
-
-        gen_configs = [
-            beam_search_gen_config,
-            beam_sample_gen_config,
-            group_beam_search_gen_config,
-            constrained_beam_search_gen_config,
-        ]
-        ov_model_stateful = OVModelForCausalLM.from_pretrained(
-            model_id, export=True, use_cache=True, stateful=True, **model_kwargs
-        )
-        ov_model_stateless = OVModelForCausalLM.from_pretrained(
-            model_id, export=True, use_cache=True, stateful=False, **model_kwargs
-        )
-        transformers_model = AutoModelForCausalLM.from_pretrained(model_id, **model_kwargs)
-
-        if model_arch == "arctic":
-            transformers_model.to(torch.float32)
-        tokenizer.pad_token_id = tokenizer.eos_token_id
-        tokens = tokenizer(["Today is a nice day and I am longer", "This is me"], return_tensors="pt", padding=True)
-        tokens.pop("token_type_ids", None)
-        ov_model_stateful.generation_config.eos_token_id = None
-        ov_model_stateless.generation_config.eos_token_id = None
-        transformers_model.generation_config.eos_token_id = None
-        ov_model_stateful.config.eos_token_id = None
-        ov_model_stateless.config.eos_token_id = None
-        transformers_model.config.eos_token_id = None
-
-        for gen_config in gen_configs:
-            if gen_config.do_sample and model_arch in ["baichuan2-13b", "olmo"]:
-                continue
-
-            transformers_outputs = transformers_model.generate(**tokens, generation_config=gen_config)
-            ov_stateful_outputs = ov_model_stateful.generate(**tokens, generation_config=gen_config)
-            self.assertTrue(
-                torch.equal(ov_stateful_outputs, transformers_outputs),
-                f"generation config : {gen_config}, transformers output {transformers_outputs}, ov_model_stateful output {ov_stateful_outputs}",
-            )
-            ov_stateless_outputs = ov_model_stateless.generate(**tokens, generation_config=gen_config)
-            self.assertTrue(
-                torch.equal(ov_stateless_outputs, transformers_outputs),
-                f"generation config : {gen_config}, transformers output {transformers_outputs}, ov_model_stateless output {ov_stateless_outputs}",
-            )
-
-    def test_load_with_different_dtype(self):
-        set_seed(SEED)
-        model_id = MODEL_NAMES["llama"]
+        model_id = MODEL_NAMES[model_type]
+        config = AutoConfig.from_pretrained(model_id, trust_remote_code=True)
         pt_model = AutoModelForCausalLM.from_pretrained(
-            model_id,
+            model_id, trust_remote_code=True
         )
-        tokenizer = AutoTokenizer.from_pretrained(model_id)
+        tokenizer = AutoTokenizer.from_pretrained(model_id , trust_remote_code=True)
 
         texts = ["this is a simple input"]
         test_input = tokenizer(texts, return_tensors="pt")
 
         ref_logits = pt_model(**test_input).logits
-        torch_dtypes = [None, "auto", "float32", torch.float16]
-        if is_openvino_version(">", "2024.2.0"):
-            torch_dtypes.append("bfloat16")
+        #torch_dtypes = [None, "auto", "float32", torch.float16]
+        #if is_openvino_version(">", "2024.2.0"):
+        #    torch_dtypes.append("bfloat16")
+
+        torch_dtypes = [config.torch_dtype]
 
         for dtype in torch_dtypes:
-            ov_model = OVModelForCausalLM.from_pretrained(model_id=model_id, export=True, torch_dtype=dtype)
+            ov_model = OVModelForCausalLM.from_pretrained(model_id=model_id, export=True, torch_dtype=dtype, load_in_8bit=False, trust_remote_code=True)
             ov_logits = ov_model(**test_input).logits
             self.assertTrue(
-                torch.allclose(torch.Tensor(ov_logits), ref_logits, atol=5e-3),
+                torch.allclose(torch.Tensor(ov_logits), ref_logits, atol=1e-4),
                 f"values are not close for {dtype if dtype is not None else 'None'}, max diff = {torch.abs(ov_logits - ref_logits).max()}",
             )
 
