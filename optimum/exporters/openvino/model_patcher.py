@@ -101,6 +101,15 @@ def patch_model_with_bettertransformer(model):
     return model
 
 
+# initialization of sin/cos cached in bf16/fp16 leads to accuracy loss
+# reinitialize them to save in float32 before export
+def _reinitialize_cos_sin_cached_fp32(rotary_emb):
+    if rotary_emb.cos_cached.dtype != torch.float32:
+        rotary_emb._set_cos_sin_cache(
+            seq_len=rotary_emb.max_position_embeddings, device=rotary_emb.inv_freq.device, dtype=torch.float32
+        )
+
+
 def _mixtral_sparse_moe_block_forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
     """ """
     batch_size, sequence_length, hidden_dim = hidden_states.shape
@@ -149,6 +158,7 @@ class MixtralModelPatcher(DecoderModelPatcher):
             layer.block_sparse_moe.forward = types.MethodType(
                 _mixtral_sparse_moe_block_forward, layer.block_sparse_moe
             )
+            _reinitialize_cos_sin_cached_fp32(layer.self_attn.rotary_emb)
 
     def __exit__(self, exc_type, exc_value, traceback):
         super().__exit__(exc_type, exc_value, traceback)
@@ -1893,6 +1903,7 @@ class PersimmonModelPatcher(DecoderModelPatcher):
                 orig_self_attn_fwd = layer.self_attn.forward
                 layer.self_attn.forward = types.MethodType(_persimmon_self_attn_sdpa_forward, layer.self_attn)
                 layer.self_attn._orig_forward = orig_self_attn_fwd
+            _reinitialize_cos_sin_cached_fp32(layer.self_attn.rotary_emb)
 
     def __exit__(self, exc_type, exc_value, traceback):
         super().__exit__(exc_type, exc_value, traceback)
@@ -2020,3 +2031,31 @@ class JaisModelPatcher(DecoderModelPatcher):
             if hasattr(layer.attn, "_orig_attn"):
                 layer.attn._attn = layer.attn._orig_attn
                 layer.attn.forward = layer.attn._orig_forward
+
+
+class RotaryEmbPatcher(DecoderModelPatcher):
+    def __enter__(self):
+        super().__enter__()
+        for layer in self._model.model.layers:
+            _reinitialize_cos_sin_cached_fp32(layer.self_attn.rotary_emb)
+
+
+class FalconModelPatcher(DecoderModelPatcher):
+    def __enter__(self):
+        super().__enter__()
+        for layer in self._model.transformer.h:
+            _reinitialize_cos_sin_cached_fp32(layer.self_attention.rotary_emb)
+
+
+class GptNeoxModelPatcher(DecoderModelPatcher):
+    def __enter__(self):
+        super().__enter__()
+        for layer in self._model.gpt_neox.layers:
+            _reinitialize_cos_sin_cached_fp32(layer.attention.rotary_emb)
+
+
+class GptNeoxJapaneseModelPatcher(DecoderModelPatcher):
+    def __enter__(self):
+        super().__enter__()
+        for layer in self._model.gpt_neox_japanese.layers:
+            _reinitialize_cos_sin_cached_fp32(layer.attention.rotary_emb)
