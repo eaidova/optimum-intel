@@ -19,6 +19,7 @@ import logging
 import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
+from memory_profiler import profile
 
 import onnx
 from transformers.utils import is_tf_available, is_torch_available
@@ -73,7 +74,7 @@ if is_tf_available():
 if TYPE_CHECKING:
     from optimum.intel.openvino.configuration import OVConfig
 
-
+@profile
 def _save_model(model, path: str, ov_config: Optional["OVConfig"] = None):
     compress_to_fp16 = False
 
@@ -256,7 +257,7 @@ def export_pytorch_via_onnx(
     _save_model(ov_model, output.parent / OV_XML_FILE_NAME if output.suffix != ".xml" else output, ov_config=ov_config)
     return input_names, output_names, True
 
-
+@profile
 def export_pytorch(
     model: Union["PreTrainedModel", "ModelMixin"],
     config: OnnxConfig,
@@ -375,8 +376,8 @@ def export_pytorch(
                 ov_model = convert_model(model, example_input=dummy_inputs, input=input_info)
 
         except Exception as ex:
+            raise ex
             logger.warning(f"Export model to OpenVINO directly failed with: \n{ex}.\nModel will be exported to ONNX")
-
             if stateful:
                 # cannot raise because stateful is enabled by default and it would break backward compatibility for models that couldn't convert to OV directly
                 # TODO: Implement stateful for ONNX path as well, not doing it right now because of lack of validation

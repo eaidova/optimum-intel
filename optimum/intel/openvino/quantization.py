@@ -12,6 +12,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+from memory_profiler import profile
 import collections.abc
 import copy
 import inspect
@@ -788,7 +789,7 @@ class OVQuantizer(OptimumQuantizer):
         calibration_dataset = nncf.Dataset(calibration_data[:num_samples])
         return calibration_dataset
 
-
+@profile
 def _weight_only_quantization(
     model: openvino.runtime.Model,
     quantization_config: Union[OVWeightQuantizationConfig, Dict],

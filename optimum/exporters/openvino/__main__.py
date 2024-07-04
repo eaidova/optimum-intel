@@ -15,7 +15,9 @@
 import logging
 import warnings
 from pathlib import Path
+import gc
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union
+from memory_profiler import profile
 
 from huggingface_hub.constants import HUGGINGFACE_HUB_CACHE
 from requests.exceptions import ConnectionError as RequestsConnectionError
@@ -31,6 +33,7 @@ from optimum.intel.utils.import_utils import (
     is_transformers_version,
 )
 from optimum.utils.save_utils import maybe_load_preprocessors
+from .utils import clear_class_registry
 
 
 if TYPE_CHECKING:
@@ -63,7 +66,7 @@ def infer_task(task, model_name_or_path):
             )
     return task
 
-
+@profile
 def main_export(
     model_name_or_path: str,
     output: Union[str, Path],
@@ -395,8 +398,13 @@ def main_export(
         **kwargs_shapes,
     )
 
+
     if convert_tokenizer:
         maybe_convert_tokenizers(library_name, output, model, preprocessors)
+
+    clear_class_registry()
+    del model
+    gc.collect()
 
     # Unpatch modules after GPTQ export
     if do_gptq_patching:

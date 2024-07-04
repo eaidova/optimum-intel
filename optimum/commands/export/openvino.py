@@ -333,11 +333,11 @@ class OVExportCommand(BaseOptimumCLICommand):
             else:
                 raise NotImplementedError(f"Quantization in hybrid mode isn't supported for class {class_name}.")
 
-            model = model_cls.from_pretrained(self.args.model, export=True, quantization_config=quantization_config)
+            model = model_cls.from_pretrained(self.args.model, export=True, quantization_config=quantization_config, compile=quantize_with_dataset)
             model.save_pretrained(self.args.output)
             if not self.args.disable_convert_tokenizer:
                 maybe_convert_tokenizers(library_name, self.args.output, model)
-        elif task.startswith("text-generation") and quantize_with_dataset:
+        elif task.startswith("text-generation") and quantization_config:
             from optimum.intel import OVModelForCausalLM
 
             # To quantize a text-generation model with a dataset, an instantiated OVModelForCausalLM is required
@@ -347,6 +347,8 @@ class OVExportCommand(BaseOptimumCLICommand):
                 quantization_config=quantization_config,
                 stateful=not self.args.disable_stateful,
                 trust_remote_code=self.args.trust_remote_code,
+                compile=False,
+                load_in_8bit=False
             )
             model.save_pretrained(self.args.output)
 

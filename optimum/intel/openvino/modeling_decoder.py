@@ -11,6 +11,8 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
+
+from memory_profiler import profile
 import copy
 import logging
 import os
@@ -87,6 +89,7 @@ TEXT_GENERATION_EXAMPLE = r"""
     """,
 )
 class OVBaseDecoderModel(OVModel):
+    @profile
     def __init__(
         self,
         model: openvino.runtime.Model,
@@ -234,6 +237,7 @@ class OVBaseDecoderModel(OVModel):
         self._save_openvino_config(save_directory)
 
     @classmethod
+    @profile
     def _from_transformers(
         cls,
         model_id: str,
@@ -731,6 +735,7 @@ class OVModelForCausalLM(OVBaseDecoderModel, GenerationMixin):
         return True
 
     @classmethod
+    @profile
     def _from_pretrained(
         cls,
         model_id: Union[str, Path],
