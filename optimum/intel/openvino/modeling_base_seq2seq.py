@@ -194,7 +194,11 @@ class OVBaseModelForSeq2SeqLM(OVBaseModel):
         if os.path.isdir(model_id):
             encoder = cls.load_model(os.path.join(model_id, encoder_file_name), quantization_config)
             decoder = cls.load_model(os.path.join(model_id, decoder_file_name), quantization_config)
-            if use_cache and os.path.exists(os.path.join(model_id, decoder_with_past_file_name)):
+            if (
+                use_cache
+                and not model_has_state(decoder)
+                and os.path.exists(os.path.join(model_id, decoder_with_past_file_name))
+            ):
                 decoder_with_past = cls.load_model(
                     os.path.join(model_id, decoder_with_past_file_name), quantization_config
                 )
@@ -204,8 +208,6 @@ class OVBaseModelForSeq2SeqLM(OVBaseModel):
         # Load model from hub
         else:
             model_file_names = {"encoder": encoder_file_name, "decoder": decoder_file_name}
-            if use_cache:
-                model_file_names["decoder_with_past"] = decoder_with_past_file_name
 
             # If not ONNX then OpenVINO IR : adds binary files
             if not from_onnx:
@@ -227,8 +229,18 @@ class OVBaseModelForSeq2SeqLM(OVBaseModel):
             model_save_dir = Path(model_cache_path).parent
             encoder = cls.load_model(file_names["encoder"], quantization_config)
             decoder = cls.load_model(file_names["decoder"], quantization_config)
-            if use_cache:
-                decoder_with_past = cls.load_model(file_names["decoder_with_past"], quantization_config)
+            if use_cache and not model_has_state(decoder):
+                decoder_with_past_path = hf_hub_download(
+                    repo_id=model_id,
+                    filename=decoder_with_past_file_name,
+                    token=token,
+                    revision=revision,
+                    cache_dir=cache_dir,
+                    force_download=force_download,
+                    local_files_only=local_files_only,
+                )
+
+                decoder_with_past = cls.load_model(decoder_with_past_path, quantization_config)
 
         try:
             generation_config = GenerationConfig.from_pretrained(
