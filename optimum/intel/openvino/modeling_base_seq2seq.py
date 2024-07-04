@@ -239,6 +239,15 @@ class OVBaseModelForSeq2SeqLM(OVBaseModel):
                     force_download=force_download,
                     local_files_only=local_files_only,
                 )
+                _ = hf_hub_download(
+                    repo_id=model_id,
+                    filename=decoder_with_past_file_name.replace(".xml", ".bin"),
+                    token=token,
+                    revision=revision,
+                    cache_dir=cache_dir,
+                    force_download=force_download,
+                    local_files_only=local_files_only,
+                )
 
                 decoder_with_past = cls.load_model(decoder_with_past_path, quantization_config)
 
@@ -332,6 +341,8 @@ class OVBaseModelForSeq2SeqLM(OVBaseModel):
             ov_config = None
         else:
             ov_config = OVConfig(dtype="fp32")
+        
+        stateful = kwargs.get("stateful", True)
 
         main_export(
             model_name_or_path=model_id,
@@ -345,6 +356,7 @@ class OVBaseModelForSeq2SeqLM(OVBaseModel):
             force_download=force_download,
             trust_remote_code=trust_remote_code,
             ov_config=ov_config,
+            stateful=stateful
         )
 
         config.save_pretrained(save_dir_path)
