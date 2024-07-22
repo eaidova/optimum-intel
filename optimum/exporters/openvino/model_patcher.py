@@ -697,6 +697,21 @@ class MistralModelPatcher(DecoderModelPatcher):
                 layer.self_attn.rotary_emb.forward = layer.self_attn.rotary_emb._orig_forward
 
 
+class MistralModelPatcher(DecoderModelPatcher):
+    def __enter__(self):
+        super().__enter__()
+
+        # mistral has some accuracy issues with bf16 with transformers >= 4.42
+        # prefill rotary emb sin/cos for avoid this issue
+        if is_transformers_version(">=", "4.42.0"):
+            register_sin_cos_buffer(self._model)
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        for layer in self._model.model.layers:
+            if hasattr(layer.self_attn.rotary_emb, "_orig_forward"):
+                layer.self_attn.rotary_emb.forward = layer.self_attn.rotary_emb._orig_forward
+
+
 SUPPORT_SDPA = is_torch_version(">", "2.1.0")
 
 
@@ -1550,6 +1565,9 @@ class Phi3ModelPatcher(DecoderModelPatcher):
                     rotary_emb.base ** (torch.arange(0, rotary_emb.dim, 2, dtype=torch.int64).float() / rotary_emb.dim)
                 )
 
+        # phi3 has issue with bf16 inference, precollect sin/cos for rotary_position_embedding for avoid accuracy issues
+        register_sin_cos_buffer(self._model)
+
     def __exit__(self, exc_type, exc_value, traceback):
         super().__exit__(exc_type, exc_value, traceback)
         if hasattr(self._model.model, "_orig_forward"):
@@ -1559,6 +1577,7 @@ class Phi3ModelPatcher(DecoderModelPatcher):
         for layer in self._model.model.layers:
             if hasattr(layer.self_attn, "_orig_forward"):
                 layer.self_attn.forward = layer.self_attn._orig_forward
+            layer.self_attn.rotary_emb.forward = layer.self_attn.rotary_emb._orig_forward
 
 
 def _aquila_self_attn_sdpa_forward(
