@@ -561,16 +561,16 @@ class LlamaModelPatcher(DecoderModelPatcher):
         # fill causal mask in slightly different way for avoid overflow on some platforms
         patch_update_causal_mask(self._model, "4.39.0")
 
-        if is_transformers_version(">=", "4.39.0"):
-            register_sin_cos_buffer(self._model)
+        # if is_transformers_version(">=", "4.39.0"):
+        #     register_sin_cos_buffer(self._model)
 
     def __exit__(self, exc_type, exc_value, traceback):
         super().__exit__(exc_type, exc_value, traceback)
         if hasattr(self._model.model, "_orig_update_causal_mask"):
             self._model.model._update_causal_mask = self._model.model._orig_update_causal_mask
 
-            for layer in self._model.model.layers:
-                layer.self_attn.rotary_emb.forward = layer.self_attn.rotary_emb._orig_forward
+            # for layer in self._model.model.layers:
+            #     layer.self_attn.rotary_emb.forward = layer.self_attn.rotary_emb._orig_forward
 
 
 # copied from https://github.com/huggingface/transformers/commit/57d7594a79a9f5d835abf2d4d384db0e4818e548 to unblock export with transformers 4.42
@@ -694,7 +694,7 @@ class MistralModelPatcher(DecoderModelPatcher):
 
             # mistral has some accuracy issues with bf16 with transformers >= 4.42
             # prefill rotary emb sin/cos for avoid this issue
-            register_sin_cos_buffer(self._model)
+            # register_sin_cos_buffer(self._model)
 
     def __exit__(self, exc_type, exc_value, traceback):
         super().__exit__(exc_type, exc_value, traceback)
@@ -2089,7 +2089,7 @@ class DBRXModelPatcher(DecoderModelPatcher):
         )
 
         # starting from transformers 4.41 issue also observable for calculation sin/cos for rotary_emb
-        patch_rope_sin_cos = is_transformers_version(">=", "4.41.0")
+        patch_rope_sin_cos = False#is_transformers_version(">=", "4.41.0")
 
         inv_freq = getattr(self._model.transformer.blocks[0].norm_attn_norm.attn.rotary_emb, "inv_freq")
         dim, base = None, None
