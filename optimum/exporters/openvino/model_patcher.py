@@ -1541,6 +1541,7 @@ def _phi3_self_attn_sdpa_forward(
 class Phi3ModelPatcher(DecoderModelPatcher):
     def __enter__(self):
         super().__enter__()
+        register_sin_cos_buffer(self._model)
 
         if is_transformers_version(">=", "4.42.0"):
             self._model.model._orig_forward = self._model.model.forward
@@ -1569,6 +1570,8 @@ class Phi3ModelPatcher(DecoderModelPatcher):
         for layer in self._model.model.layers:
             if hasattr(layer.self_attn, "_orig_forward"):
                 layer.self_attn.forward = layer.self_attn._orig_forward
+            if hasattr(layer.self_attn.rotary_emb, "_orig_forward"):
+                layer.self_attn.rotary_emb.forward = layer.self_attn.rotary_emb._orig_forward
 
 
 def _aquila_self_attn_sdpa_forward(
