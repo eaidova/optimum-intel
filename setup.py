@@ -28,7 +28,7 @@ except Exception as error:
 
 INSTALL_REQUIRE = [
     "torch>=1.11",
-    "optimum~=1.23",
+    "optimum@git+https://github.com/eaidova/optimum.git@ea/move_dummy_inputs_allowed#egg=optimum",
     "transformers>=4.36,<4.47",
     "datasets>=1.4.0",
     "sentencepiece",
