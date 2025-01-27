@@ -59,7 +59,7 @@ from optimum.utils.input_generators import (
     MistralDummyPastKeyValuesGenerator,
 )
 from optimum.utils.normalized_config import NormalizedConfig, NormalizedTextConfig, NormalizedVisionConfig
-
+from optimum.exporters.utils import _get_submodels_for_export_encoder_decoder
 from ...intel.utils.import_utils import (
     _transformers_version,
     is_diffusers_available,
@@ -2686,3 +2686,120 @@ class MT5OpenVINOConfig(T5OpenVINOConfig):
 )
 class LongT5OpenVINOConfig(T5OpenVINOConfig):
     pass
+
+class Blip2ConfigBehavior(str, enum.Enum):
+    LANGUAGE = "language"
+    VISION_EMBEDDINGS = "vision_embeddings"
+    QFORMER = "qformer"
+    LANGUAGE_PROJECTION = "language_projection"
+    TEXT_EMBEDDINGS = "text_embeddings"
+
+
+class Blip22OpenVINOConfig(OnnxConfig):
+    def __init__(
+        self,
+        config: "PretrainedConfig",
+        task: str = "feature-extraction",
+        int_dtype: str = "int64",
+        float_dtype: str = "fp32",
+        behavior: Blip2ConfigBehavior = Blip2ConfigBehavior.VISION_EMBEDDINGS,
+        preprocessors: Optional[List[Any]] = None,
+        use_past: bool = False,
+    ):
+        self._behavior = behavior
+        self._orig_config = config
+        super().__init__(
+            config=config,
+            task=task,
+            int_dtype=int_dtype,
+            float_dtype=float_dtype,
+            preprocessors=preprocessors,
+        )
+
+    @property
+    def inputs(self):
+        if self._behavior == Blip2ConfigBehavior.VISION_EMBEDDINGS:
+            return {"pixel_values": {0: "batch_size", 2: "height", 3: "width"}}
+        if self._behavior == Blip2ConfigBehavior.QFORMER:
+            return {"image_embeds": {0: "batch_size"}, "image_attention_mask": {0: "batch_size"}}
+    
+        
+
+    @staticmethod
+    def get_model_for_behavior(model, behavior: Union[str, Blip2ConfigBehavior], stateful: bool = False):
+        if isinstance(behavior, str) and not isinstance(behavior, Blip2ConfigBehavior):
+            behavior = Blip2ConfigBehavior(behavior)
+
+        if behavior == Blip2ConfigBehavior.LANGUAGE:
+            language_model = model.language_model
+            if language_model.config.is_encoder_decoder:
+                return _get_submodels_for_export_encoder_decoder(language_model, use_past=not stateful)
+                
+            else:
+                return language_model
+
+        if behavior == Blip2ConfigBehavior.QFORMER:
+            return model
+        
+        if behavior == Blip2ConfigBehavior.VISION_EMBEDDINGS:
+            return model.vision_model
+
+        if behavior == Blip2ConfigBehavior.LANGUAGE_PROJECTION:
+            return model.language_projection
+        
+        if behavior == Blip2ConfigBehavior.TEXT_EMBEDDINGS:
+            return model.get_input_embeddings()
+
+    def with_behavior(
+        self,
+        behavior: Union[str, Blip2ConfigBehavior],
+    ):
+        """
+        Creates a config for different behaviour.
+        Args:
+            behavior ([`ConfigBehavior`]):
+                The behavior to use for the new instance.
+        """
+
+        if isinstance(behavior, str) and not isinstance(behavior, Blip2ConfigBehavior):
+            behavior = Blip2ConfigBehavior(behavior)
+
+        if behavior == Blip2ConfigBehavior.TEXT_EMBEDDINGS:
+            model_type = self._orig_config.text_config.model_type
+            return get_vlm_text_embeddings_config(model_type, self._orig_config.text_config, self.int_dtype, self.float_dtype)
+
+        if behavior == Blip2ConfigBehavior.LANGUAGE:
+            model_type = self._orig_config.text_config.model_type
+            return get_vlm_text_generation_config(model_type, self._orig_config, self.int_dtype, self.float_dtype)
+
+        if behavior == Blip2ConfigBehavior.VISION_EMBEDDINGS:
+            return self.__class__(
+                self._orig_config,
+                task=self.task,
+                int_dtype=self.int_dtype,
+                float_dtype=self.float_dtype,
+                behavior=behavior,
+                preprocessors=self._preprocessors,
+            )
+    
+        if behavior == Blip2ConfigBehavior.QFORMER:
+            return self.__class__(
+                self._orig_config,
+                task=self.task,
+                int_dtype=self.int_dtype,
+                float_dtype=self.float_dtype,
+                behavior=behavior,
+                preprocessors=self._preprocessors,
+            )
+        
+        if behavior == Blip2ConfigBehavior.LANGUAGE_PROJECTION:
+            return self.__class__(
+                self._orig_config,
+                task=self.task,
+                int_dtype=self.int_dtype,
+                float_dtype=self.float_dtype,
+                behavior=behavior,
+                preprocessors=self._preprocessors,
+            )
+
+
