@@ -3261,3 +3261,122 @@ class Idefics3OpenVINOConfig(BaseVLMOpenVINOConfig):
 @register_in_tasks_manager("smolvlm", *["image-text-to-text", "video-text-to-text"], library_name="transformers")
 class SmolVLMOpenVINOConfig(Idefics3OpenVINOConfig):
     MIN_TRANSFORMERS_VERSION = "4.50.0"
+
+
+class MLlamaVisionDummpyInputGenerator(DummyVisionInputGenerator):
+    SUPPORTED_INPUT_NAMES = (
+        "pixel_values",
+        "aspect_ratio_mask",
+        "aspect_ratio_ids"
+    )
+
+    def __init__(
+        self,
+        task: str,
+        normalized_config: NormalizedVisionConfig,
+        batch_size: int = DEFAULT_DUMMY_SHAPES["batch_size"],
+        num_channels: int = DEFAULT_DUMMY_SHAPES["num_channels"],
+        width: int = DEFAULT_DUMMY_SHAPES["width"],
+        height: int = DEFAULT_DUMMY_SHAPES["height"],
+        **kwargs,
+    ):
+        self.task = task
+        self.num_channels = normalized_config.config.vision_config.num_channels
+        self.image_size = normalized_config.config.vision_config.image_size
+        self.num_tiles = normalized_config.config.vision_config.max_num_tiles
+        self.batch_size = batch_size
+        self.height, self.width = self.image_size
+
+    def generate(self, input_name: str, framework: str = "pt", int_dtype: str = "int64", float_dtype: str = "fp32"):
+        if input_name == "pixel_values":
+            return self.random_float_tensor(
+                shape=[self.batch_size, 1, self.num_tiles, self.height, self.width],
+                framework=framework,
+                dtype=float_dtype,
+            )
+        if input_name == "aspect_ratio_mask":
+            return self.random_int_tensor([self.batch_size, 1, self.num_tiles], 2)
+        if input_name == "aspect_ratio_ids":
+            return self.random_int_tensor([self.batch_size, 1], self.num_tiles)
+
+
+@register_in_tasks_manager("mllama", *["image-text-to-text"], library_name="transformers")
+class MLlamaOpenVINOConfig(BaseVLMOpenVINOConfig):
+    SUPPORTED_BEHAVIORS = [VLMConfigBehavior.LANGUAGE, VLMConfigBehavior.VISION_EMBEDDINGS]
+    DUMMY_INPUT_GENERATOR_CLASSES = (MLlamaVisionDummpyInputGenerator, )
+
+    @property
+    def inputs(self) -> Dict[str, Dict[int, str]]:
+        if not self._behavior == VLMConfigBehavior.VISION_EMBEDDINGS:
+            return {}
+        return {
+            "pixel_values": {0: "batch_size", 1: "num_images", "num_tiles": 2, 4: "height", 5: "width"},
+            "aspect_ratio_ids": {0: "batch_size", 1: "num_images"},
+            "aspect_ratio_mask": {0: "batch_size", 1: "num_images", 2: "num_tiles"}
+        }
+
+    @property
+    def outputs(self) -> Dict[str, Dict[int, str]]:
+        if not self._behavior == VLMConfigBehavior.VISION_EMBEDDINGS:
+            return {}
+        base_outputs = {"last_hidden_state": {0: "batch_size"}}
+        base_outputs.update(self.add_cross_attn_outputs())
+        return base_outputs
+
+    def add_cross_attn_outputs(self):
+        outputs = {}
+        for i in self._normalized_config.config.text_config.cross_attention_layers:
+            outputs[f"cross_attn_key_values.{i}.key"] = {0: "batch_size", 2: "seq_length"}
+            outputs[f"cross_attn_key_values.{i}.value"] = {0: "batch_size", 2: "seq_length"}
+        return outputs
+
+    def with_behavior(
+        self,
+        behavior: Union[str, VLMConfigBehavior],
+    ):
+        """
+        Creates a config for different behaviour.
+
+        Args:
+            behavior ([`ConfigBehavior`]):
+                The behavior to use for the new instance.
+        """
+        if isinstance(behavior, str) and not isinstance(behavior, VLMConfigBehavior):
+            behavior = VLMConfigBehavior(behavior)
+
+
+        if behavior == VLMConfigBehavior.LANGUAGE:
+            model_type = self._orig_config.text_config.model_type
+            return get_vlm_text_generation_config(
+                model_type, self._orig_config.text_config, self.int_dtype, self.float_dtype
+            )
+
+        if behavior == VLMConfigBehavior.VISION_EMBEDDINGS:
+            return self.__class__(
+                self._orig_config,
+                task=self.task,
+                int_dtype=self.int_dtype,
+                float_dtype=self.float_dtype,
+                behavior=behavior,
+                preprocessors=self._preprocessors,
+            )
+
+    def get_model_for_behavior(self, model, behavior: Union[str, VLMConfigBehavior]):
+        if isinstance(behavior, str) and not isinstance(behavior, VLMConfigBehavior):
+            behavior = VLMConfigBehavior(behavior)
+
+        if behavior == VLMConfigBehavior.LANGUAGE:
+            return model.language_model
+
+        if behavior == VLMConfigBehavior.VISION_EMBEDDINGS:
+            return model
+
+    def patch_model_for_export(
+        self, model: Union["PreTrainedModel", "TFPreTrainedModel"], model_kwargs: Optional[Dict[str, Any]] = None
+    ):
+        model_kwargs = model_kwargs or {}
+        if self._behavior != VLMConfigBehavior.VISION_EMBEDDINGS:
+            return super().patch_model_for_export(model, model_kwargs)
+        return MllamaVisionModelPatcher(self, model, model_kwargs)
+
+    
