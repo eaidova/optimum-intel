@@ -105,6 +105,7 @@ from .model_patcher import (
     MiniCPMVResamplerModelPatcher,
     MistralModelPatcher,
     MixtralModelPatcher,
+    MllamaVisionModelPatcher,
     MPTModelPatcher,
     PersimmonModelPatcher,
     Phi3ModelPatcher,

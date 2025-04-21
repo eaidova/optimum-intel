@@ -4874,3 +4874,195 @@ class Idefics3ImageEmbeddingsModelPatcher(ModelPatcher):
         self._model.vision_model.embeddings.forward = self._model.vision_model.embeddings._orig_forward
         for layer in self._model.vision_model.encoder.layers:
             layer.self_attn.forward = layer.self_attn._orig_forward
+
+
+
+class MllamaVisionModelPatcher(ModelPatcher):
+    def __init__(
+        self,
+        config: "OnnxConfig",
+        model: Union["PreTrainedModel", "TFPreTrainedModel"],
+        model_kwargs: Dict[str, Any] = None
+    ):
+        
+        def forward(self, pixel_values, aspect_ratio_ids, aspect_ratio_mask):
+            from transformers.models.llama.modeling_llama import repeat_kv
+            bsz = pixel_values.shape[0]
+            cross_attention_states = self.vision_model(pixel_values, aspect_ratio_ids, aspect_ratio_mask)[0]
+            cross_attention_states = self.multi_modal_projector(cross_attention_states).reshape(
+                -1, cross_attention_states.shape[-2], self.model.hidden_size
+            )
+            cross_attention_kv_cache = ()
+            for layer_idx in self.language_model.model.cross_attention_layers:
+                layer = self.language_model.model.layers[layer_idx]
+                cross_attn = layer.cross_attn
+                key_states = cross_attn.k_proj(cross_attention_states)
+                value_states = cross_attn.v_proj(cross_attention_states)
+                key_states = key_states.view(bsz, -1, cross_attn.num_key_value_heads, cross_attn.head_dim).transpose(1, 2)
+                value_states = value_states.view(bsz, -1, cross_attn.num_key_value_heads, cross_attn.head_dim).transpose(1, 2)
+                key_states = repeat_kv(key_states, cross_attn.num_key_value_groups)
+                value_states = repeat_kv(value_states, cross_attn.num_key_value_groups)
+
+                key_states = cross_attn.k_norm(key_states)
+                cross_attention_kv_cache += ((key_states, value_states),)
+
+            return {"last_hidden_state": cross_attention_states, "cross_attention_key_values": cross_attention_kv_cache}
+    
+        model.__orig_forward = model.forward
+        model.forward = types.MethodType(forward, model)
+        super().__init__(config, model, model_kwargs)
+
+    def __enter__(self):
+        super().__enter__()
+        def _mllama_vision_prepare_aspect_ratio_attention_mask(
+            aspect_ratio_mask: torch.Tensor,
+            num_patches: int,
+            target_length: int,
+            dtype: torch.dtype,
+        ) -> torch.Tensor:
+            # Expand aspect ratio mask to target_length
+            batch_size, max_num_tiles = aspect_ratio_mask.shape
+            attention_mask = aspect_ratio_mask.view(batch_size, max_num_tiles, 1, 1).to(dtype)
+            attention_mask = attention_mask.repeat(1, 1, target_length, 1)
+
+            # Mask padding patches
+            pad_patches = target_length - num_patches
+            attention_mask[:, :, -pad_patches:] = 0
+
+            # Invert the mask (0 -> 1, 1 -> 0)
+            attention_mask = 1 - attention_mask
+
+            # Reshape to 2D and create 4D attention mask
+            # (batch_size, 1, max_num_tiles * target_length, max_num_tiles * target_length)
+            attention_mask = attention_mask.reshape(batch_size, max_num_tiles * target_length, 1)
+            attention_mask = attention_mask @ attention_mask.transpose(-1, -2) * torch.finfo(torch.float16).min
+            attention_mask = attention_mask.unsqueeze(1)
+
+            return attention_mask
+
+        def _mllama_vision_encoder_forward(
+            self,
+            pixel_values: torch.Tensor,
+            aspect_ratio_ids: torch.Tensor,
+            aspect_ratio_mask: torch.Tensor,
+            output_attentions: Optional[bool] = None,
+            output_hidden_states: Optional[bool] = None,
+            return_dict: Optional[bool] = None,
+        ):
+            from transformers.modeling_outputs import BaseModelOutput
+
+            output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
+            output_hidden_states = output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+            return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+            batch_size, num_concurrent_media, num_tiles, num_channels, height, width = pixel_values.shape
+
+            pixel_values = pixel_values.reshape(batch_size * num_concurrent_media * num_tiles, num_channels, height, width)
+            aspect_ratio_ids = aspect_ratio_ids.reshape(batch_size * num_concurrent_media, -1)
+
+            # Patch embedding
+            patch_embeds = self.patch_embedding(pixel_values.to(self.dtype).to(self.device))
+            hidden_state = patch_embeds.flatten(2).transpose(1, 2)
+
+            # Tile embeddings
+            _, num_patches, dim = hidden_state.shape
+            hidden_state = hidden_state.reshape(batch_size * num_concurrent_media, num_tiles, -1, dim)
+            hidden_state = self.pre_tile_positional_embedding(hidden_state, aspect_ratio_ids)
+
+            # Add cls token
+            hidden_state = hidden_state.reshape(batch_size * num_concurrent_media * num_tiles, num_patches, dim)
+            hidden_state = self.apply_class_embedding(hidden_state)
+            num_patches += 1
+
+            # Position embeddings
+            hidden_state = hidden_state.reshape(batch_size * num_concurrent_media, num_tiles, num_patches, dim)
+            hidden_state = self.gated_positional_embedding(hidden_state, aspect_ratio_ids)
+
+            hidden_state = self.layernorm_pre(hidden_state)
+
+            # Compute the number of tokens to pad
+            num_padding_patches = (8 - (hidden_state.shape[-2] % 8)) % 8
+            # Compute padding tuple for pad function
+            padding = (0, 0, 0, num_padding_patches)  # (pad_left, pad_right, pad_left for dim -2, pad_right for dim -2)
+            # Pad the tensor
+            hidden_state = torch.nn.functional.pad(hidden_state, padding, mode="constant", value=0)
+            slice_index = -num_padding_patches if num_padding_patches > 0 else None
+
+            # Prepare attention mask
+            attention_mask = aspect_ratio_mask.reshape(batch_size * num_concurrent_media, -1)
+            attention_mask = _mllama_vision_prepare_aspect_ratio_attention_mask(
+                aspect_ratio_mask=attention_mask,
+                num_patches=self.num_patches,
+                target_length=hidden_state.shape[2],
+                dtype=self.dtype,
+            )
+
+            # Apply encoder
+            hidden_state = hidden_state.view(batch_size * num_concurrent_media, -1, dim)
+            output = self.transformer(
+                hidden_state,
+                attention_mask=attention_mask,
+                output_hidden_states=True,
+                output_attentions=output_attentions,
+            )
+            hidden_state = output[0]
+
+            hidden_state = self.layernorm_post(hidden_state)
+
+            # Apply global encoder
+            hidden_state = hidden_state.reshape(batch_size * num_concurrent_media, num_tiles, num_patches + num_padding_patches, dim)
+            hidden_state = self.post_tile_positional_embedding(hidden_state, aspect_ratio_ids)
+            hidden_state = hidden_state.reshape(batch_size * num_concurrent_media, num_tiles * (num_patches + num_padding_patches), dim)
+            global_output = self.global_transformer(
+                hidden_state,
+                attention_mask=attention_mask,
+                output_hidden_states=output_hidden_states,
+                output_attentions=output_attentions,
+            )
+            hidden_state = global_output[0]
+
+            # Remove padding form hidden state
+            hidden_state = hidden_state.reshape(batch_size * num_concurrent_media, num_tiles, num_patches + num_padding_patches, dim)
+            hidden_state = hidden_state[:, :, :slice_index]
+            hidden_state = hidden_state.reshape(batch_size, num_concurrent_media, num_tiles, num_patches, dim)
+
+            # Collect intermediate layer outputs from encoder output
+            all_intermediate_hidden_states = [output[1][i] for i in self.intermediate_layers_indices]
+            intermediate_hidden_states = torch.stack(all_intermediate_hidden_states, dim=-1)
+
+            # Remove padding from intermediate hidden states
+            intermediate_hidden_states = intermediate_hidden_states.reshape(batch_size * num_concurrent_media, num_tiles, num_patches + num_padding_patches, -1)
+            intermediate_hidden_states = intermediate_hidden_states[:, :, :slice_index]
+            intermediate_hidden_states = intermediate_hidden_states.reshape(batch_size, num_concurrent_media, num_tiles, num_patches, -1)
+
+            # Concatenate final hidden state and intermediate hidden states
+            hidden_state = torch.cat([hidden_state, intermediate_hidden_states], dim=-1)
+
+            if output_hidden_states:
+                hidden_states = tuple(all_intermediate_hidden_states) + tuple(global_output[1])
+            else:
+                hidden_states = None
+
+            if output_attentions:
+                # global transformer in contrast to `self.transformer` doesn't always return hidden states so we might go index out-of-range
+                global_attn = tuple(global_output[2]) if output_hidden_states else tuple(global_output[1])
+                attentions = tuple(output[2]) + global_attn
+            else:
+                attentions = None
+
+            if not return_dict:
+                return tuple(v for v in [hidden_state, hidden_states, attentions] if v is not None)
+
+            return BaseModelOutput(
+                last_hidden_state=hidden_state,
+                hidden_states=hidden_states,
+                attentions=attentions,
+            )
+        
+        self._model.vision_model._orig_forward = self._model.vision_model.forward
+        self._model.vision_model.forward = types.MethodType(_mllama_vision_encoder_forward, self._model.vision_model)
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        super().__exit__(exc_type, exc_value, traceback)
+        self._model.forward = self._model.__orig_forward
+        self._model.vision_model.forward = self._model.vision_model._orig_forward
